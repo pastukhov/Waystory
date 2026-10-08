@@ -37,7 +37,7 @@ npm test
 npm run check
 ```
 
-Tests cover story depth, cancellation of stale speech callbacks, local storage recovery, and request-handler behavior. Request-handler tests do not open a socket; they are not a deployment integration test. The 22 tests cover the pilot plus environment loading and address validation; browser QA and container execution were blocked by the execution environment.
+Tests cover story depth, cancellation of stale speech callbacks, local storage recovery, and request-handler behavior. Request-handler tests do not open a socket; they are not a deployment integration test. The 22 tests cover the pilot plus environment loading and address validation; browser QA was blocked locally. Docker build and runtime checks passed in GitHub Actions.
 
 ## Docker Compose
 
@@ -70,7 +70,7 @@ The image runs as the non-root `node` user with a healthcheck. Compose uses a re
 
 The optional credential placeholders in `.env.example` are for future backend work. **Setting an API key does not activate AI:** the current demo has no provider adapter.
 
-Validation: Node tests and Compose configuration were checked. Docker image build and container healthcheck could not be executed because the environment denies access to the Docker daemon socket.
+Validation: Node tests and Compose configuration were checked. Docker image build, container healthcheck, HTTP responses, and runtime secret injection passed in GitHub Actions. The local environment still denies access to the Docker daemon socket.
 
 ## Standalone preview
 

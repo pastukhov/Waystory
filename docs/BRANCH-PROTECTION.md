@@ -5,7 +5,7 @@ The repository contains CI and a **proposed branch-protection configuration**. C
 ## Required policy
 
 - All changes to `main` go through a pull request, including administrators.
-- The `Required checks` job must pass. It aggregates Node.js 22/24 tests and a real Docker build/runtime smoke test; failures, skips, and cancellations do not count as success.
+- The `Required checks` job from the GitHub Actions app (verified app ID `15368`) must pass. It aggregates Node.js 22/24 tests and a real Docker build/runtime smoke test; failures, skips, and cancellations do not count as success.
 - The branch must be up to date with `main` before merging.
 - Resolve review conversations before merging.
 - Force pushes and branch deletion are prohibited.
