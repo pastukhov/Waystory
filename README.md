@@ -37,7 +37,7 @@ npm test
 npm run check
 ```
 
-Tests cover story depth, cancellation of stale speech callbacks, local storage recovery, and request-handler behavior. Request-handler tests do not open a socket; they are not a deployment integration test. The 22 tests cover the pilot plus environment loading and address validation; browser QA and container execution were blocked by the execution environment.
+Tests cover story depth, cancellation of stale speech callbacks, local storage recovery, and request-handler behavior. Request-handler tests do not open a socket; they are not a deployment integration test. The 22 tests cover the pilot plus environment loading and address validation; browser QA was blocked locally. Docker build and runtime checks passed in GitHub Actions.
 
 ## Docker Compose
 
@@ -70,7 +70,7 @@ The image runs as the non-root `node` user with a healthcheck. Compose uses a re
 
 The optional credential placeholders in `.env.example` are for future backend work. **Setting an API key does not activate AI:** the current demo has no provider adapter.
 
-Validation: Node tests and Compose configuration were checked. Docker image build and container healthcheck could not be executed because the environment denies access to the Docker daemon socket.
+Validation: Node tests and Compose configuration were checked. Docker image build, container healthcheck, HTTP responses, and runtime secret injection passed in GitHub Actions. The local environment still denies access to the Docker daemon socket.
 
 ## Standalone preview
 
@@ -107,3 +107,9 @@ To enable real AI, implement a server-side provider adapter and configure its se
 Sample stories link to their Wikipedia sources; historical claims still need editorial verification before commercial use. Live Wikipedia text links back to its article, where attribution, revision history, and licensing terms can be found. Wikimedia images require a separate attribution/license audit before commercial launch. Sample illustrations are stylized drawings, not photographs.
 
 Location is requested only after pressing the nearby button; there is no continuous tracking. Favorites and history use localStorage. A place enters listening history after a speech section finishes, not merely after opening its card. The user can clear listening history. Speech availability and processing depend on the browser and device.
+
+## Pull request checks
+
+GitHub Actions runs on pull requests to `main`, pushes to `main`, and manual dispatch. It checks syntax and tests on Node.js 22 and 24, packages the standalone preview, then builds and runs the Docker container with a disposable `.env` fixture. No live credentials are needed. The stable aggregate job is **Required checks**.
+
+See [main branch protection](docs/BRANCH-PROTECTION.md) for the proposed policy and the administrator command needed to apply it. The JSON file itself does not protect the branch.
