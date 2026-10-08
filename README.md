@@ -107,3 +107,9 @@ To enable real AI, implement a server-side provider adapter and configure its se
 Sample stories link to their Wikipedia sources; historical claims still need editorial verification before commercial use. Live Wikipedia text links back to its article, where attribution, revision history, and licensing terms can be found. Wikimedia images require a separate attribution/license audit before commercial launch. Sample illustrations are stylized drawings, not photographs.
 
 Location is requested only after pressing the nearby button; there is no continuous tracking. Favorites and history use localStorage. A place enters listening history after a speech section finishes, not merely after opening its card. The user can clear listening history. Speech availability and processing depend on the browser and device.
+
+## Pull request checks
+
+GitHub Actions runs on pull requests to `main`, pushes to `main`, and manual dispatch. It checks syntax and tests on Node.js 22 and 24, packages the standalone preview, then builds and runs the Docker container with a disposable `.env` fixture. No live credentials are needed. The stable aggregate job is **Required checks**.
+
+See [main branch protection](docs/BRANCH-PROTECTION.md) for the proposed policy and the administrator command needed to apply it. The JSON file itself does not protect the branch.

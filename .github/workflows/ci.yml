@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Syntax and unit tests
+        run: |
+          npm run check
+          npm test
+          for file in dist/*.mjs server/*.mjs scripts/*.mjs tests/*.mjs; do
+            node --check "$file"
+          done
+          bash -n scripts/ci-container-smoke.sh
+      - name: Package standalone preview
+        run: |
+          node scripts/standalone.mjs
+          test -s artifacts/waystory-pilot.html
+
+  docker:
+    name: Docker smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build, start, and check the container
+        run: bash scripts/ci-container-smoke.sh
+
+  required-checks:
+    name: Required checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    needs: [tests, docker]
+    if: ${{ always() }}
+    steps:
+      - name: Require all jobs to succeed
+        env:
+          TESTS_RESULT: ${{ needs.tests.result }}
+          DOCKER_RESULT: ${{ needs.docker.result }}
+        run: |
+          test "$TESTS_RESULT" = success
+          test "$DOCKER_RESULT" = success
