@@ -2,6 +2,7 @@ import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {loadEnvironment,serverAddress} from './config.mjs';
 const root=fileURLToPath(new URL('../dist/',import.meta.url));
 const mime={'.html':'text/html; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
 export function createApp(){return http.createServer(async(req,res)=>{
@@ -18,4 +19,8 @@ export function createApp(){return http.createServer(async(req,res)=>{
  const file=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));if(!file.startsWith(root))return json(404,{error:'Не найдено.'});
  try{const body=await readFile(file);res.writeHead(200,{'Content-Type':mime[path.extname(file)]||'application/octet-stream'});res.end(req.method==='HEAD'?undefined:body)}catch{json(404,{error:'Не найдено.'})}
 })}
-if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){const port=Number(process.env.PORT)||5173;createApp().listen(port,'127.0.0.1',()=>console.log('Waystory: http://127.0.0.1:'+port))}
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+ loadEnvironment();
+ const {host,port}=serverAddress();
+ createApp().listen(port,host,()=>console.log('Waystory: http://'+host+':'+port));
+}

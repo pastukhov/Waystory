@@ -30,14 +30,47 @@ Requires Node.js 22 or newer. No dependency installation is needed.
 npm start
 ```
 
-Open **http://127.0.0.1:5173**. The server binds to loopback only.
+Open **http://127.0.0.1:5173**. The server binds to loopback by default. `npm start` automatically loads an optional `.env` from the working directory using Node's built-in loader; existing process environment variables take precedence.
 
 ```sh
 npm test
 npm run check
 ```
 
-Tests cover story depth, cancellation of stale speech callbacks, local storage recovery, and request-handler behavior. Request-handler tests do not open a socket; they are not a deployment integration test. All 19 tests passed during preparation; browser QA was blocked by the execution environment.
+Tests cover story depth, cancellation of stale speech callbacks, local storage recovery, and request-handler behavior. Request-handler tests do not open a socket; they are not a deployment integration test. The 22 tests cover the pilot plus environment loading and address validation; browser QA and container execution were blocked by the execution environment.
+
+## Docker Compose
+
+Requires Docker Engine and Docker Compose v2.
+
+```sh
+cp .env.example .env
+# Edit .env with your settings; never commit real credentials.
+docker compose up --build -d
+```
+
+Open **http://127.0.0.1:5173** (or the port selected in `.env`).
+
+```sh
+docker compose logs -f waystory
+docker compose down
+```
+
+After changing `.env`, run `docker compose up -d --force-recreate` to pass the new values to the container. An image rebuild is not necessary for secret changes.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `5173` | Local server port; in Compose, both container and published port |
+| `HOST` | `127.0.0.1` locally | Listen address; Compose sets `0.0.0.0` inside the container |
+| `BIND_ADDRESS` | `127.0.0.1` | Host interface for the published Docker port; use `0.0.0.0` for access from other machines |
+
+Compose injects `.env` at container startup via `env_file`. The file is excluded from Git and the Docker build context, and is never copied into the image. Runtime code reads these values from `process.env`; the browser receives no environment variables. Use single quotes for values containing `$` or `#`. Environment variables are visible to users with Docker administrative access; this is environment injection, not Docker secrets storage.
+
+The image runs as the non-root `node` user with a healthcheck. Compose uses a read-only filesystem, drops Linux capabilities, and starts Node through an init process. No npm dependencies or build-time secrets are needed.
+
+The optional credential placeholders in `.env.example` are for future backend work. **Setting an API key does not activate AI:** the current demo has no provider adapter.
+
+Validation: Node tests and Compose configuration were checked. Docker image build and container healthcheck could not be executed because the environment denies access to the Docker daemon socket.
 
 ## Standalone preview
 

@@ -1,0 +1,20 @@
+services:
+  waystory:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${PORT:-5173}:${PORT:-5173}"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "${PORT:-5173}"
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

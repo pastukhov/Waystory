@@ -1,0 +1,15 @@
+# Allowlist: only runtime sources enter the build context.
+**
+!package.json
+!server/
+!server/**
+!dist/
+!dist/**
+
+# Exclude dotenv files even if accidentally placed under a runtime directory.
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/node_modules
+**/.git
