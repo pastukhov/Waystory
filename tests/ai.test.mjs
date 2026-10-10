@@ -5,7 +5,7 @@ import {createApp} from '../server/index.mjs';
 
 const env={YANDEX_API_KEY:'test-key-never-expose',YANDEX_FOLDER_ID:'test-folder'};
 const place={title:'Казанский собор',source:'https://ru.wikipedia.org/wiki/Казанский_собор',text:'Казанский собор построен в 1801–1811 годах. Архитектор — Андрей Воронихин.'};
-const story={blocks:[{title:'Главное',depth:0,text:'Перед вами Казанский собор.'},{title:'История',depth:1,text:'Его построили в 1801–1811 годах.'},{title:'Архитектор',depth:2,text:'Проект создал Андрей Воронихин.'}]};
+const story={title:'Казанский собор',blocks:[{title:'Главное',depth:0,text:'Перед вами Казанский собор.'},{title:'История',depth:1,text:'Его построили в 1801–1811 годах.'},{title:'Архитектор',depth:2,text:'Проект собора создал русский архитектор Андрей Воронихин.'}]};
 function provider(value=story){return async()=>new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify(value)}}]}),{status:200})}
 function request(app,url,body,headers={},method=body===undefined?'GET':'POST'){
  return new Promise((resolve,reject)=>{
@@ -87,3 +87,17 @@ test('client cancellation is passed to Yandex without leaking internal errors',a
  })});
  await assert.rejects(guide.run({action:'story',place},controller.signal),{status:499});
 });
+test('story language is explicit, localized title returned and cache separates languages',async()=>{
+ let calls=0;const app=createApp({env,fetchFn:async(url,o)=>{calls++;const b=JSON.parse(o.body);assert.match(b.messages[0].content,/English|русск/);return provider({...story,title:calls===1?'Казанский собор':'Kazan Cathedral'})()}});
+ const ru=await request(app,'/api/guide',{action:'story',place,language:'ru'});const en=await request(app,'/api/guide',{action:'story',place,language:'en'});
+ assert.equal(calls,2);assert.equal(ru.json().title,'Казанский собор');assert.equal(en.json().language,'en');assert.equal(en.json().storyVersion,2);
+});
+test('short sources can return only the essential story instead of inventing detail',async()=>{
+ const app=createApp({env,fetchFn:provider({title:'Казанский собор',blocks:[story.blocks[0]]})});const r=await request(app,'/api/guide',{action:'story',place});assert.equal(r.status,200);assert.equal(r.json().blocks.length,1);assert.equal(r.json().detailLimited,true);
+});
+test('near-identical length tiers and out-of-order story sections are rejected',async()=>{
+ for(const blocks of [[{title:'A',depth:0,text:'First '.repeat(50)},{title:'B',depth:1,text:'Extra word.'},{title:'C',depth:2,text:'Another word.'}],[story.blocks[1],story.blocks[0],story.blocks[2]]]){
+ const app=createApp({env,fetchFn:provider({title:'Test',blocks})});assert.equal((await request(app,'/api/guide',{action:'story',place})).status,502)}
+});
+test('batch translation returns only requested IDs and localized text',async()=>{const app=createApp({env,fetchFn:provider({places:[{id:'wiki-en-1',title:'Красная башня',subtitle:'Башня в Аланье'}]})});const r=await request(app,'/api/guide',{action:'translatePlaces',language:'ru',places:[{id:'wiki-en-1',title:'Red Tower',subtitle:'Tower in Alanya'}]});assert.equal(r.status,200);assert.equal(r.json().places[0].title,'Красная башня')});
+test('unsupported language cannot silently generate or bill in another language',async()=>{let calls=0;const app=createApp({env,fetchFn:async()=>{calls++;return provider()()}});assert.equal((await request(app,'/api/guide',{action:'story',place,language:'tr'})).status,400);assert.equal(calls,0)});

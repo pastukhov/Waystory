@@ -3,14 +3,17 @@ import {GuideError} from './guide.mjs';
 export function createSpeech({env=process.env,fetchFn=fetch,now=Date.now}={}){
  const key=env.YANDEX_TTS_API_KEY||env.YANDEX_API_KEY;
  const enabled=Boolean(key)&&env.YANDEX_TTS_ENABLED!=='false';
- const voice=env.YANDEX_TTS_VOICE||'filipp';
+ const voices={ru:env.YANDEX_TTS_VOICE_RU||env.YANDEX_TTS_VOICE||'filipp',en:env.YANDEX_TTS_VOICE_EN||'john'};
  const limit=Number(env.TTS_REQUESTS_PER_HOUR||120);
  if(!Number.isInteger(limit)||limit<1||limit>10000)throw new Error('Invalid TTS_REQUESTS_PER_HOUR');
  const cache=new Map();let bytes=0,active=0,start=now(),calls=0;
  return {enabled,async run(payload,signal){
   if(!enabled)throw new GuideError(503,'Облачная озвучка не подключена.');
   if(typeof payload?.text!=='string'||!payload.text.trim()||payload.text.length>1600)throw new GuideError(400,'Недопустимая длина фрагмента для озвучки.');
-  const body=new URLSearchParams({text:payload.text,voice,lang:'ru-RU',format:'mp3',speed:'1.0'}).toString();
+  const language=payload.language??'ru';
+  if(!['ru','en'].includes(language))throw new GuideError(400,'Unsupported speech language.');
+  const voice=voices[language],lang=language==='en'?'en-US':'ru-RU';
+  const body=new URLSearchParams({text:payload.text,voice,lang,format:'mp3',speed:'1.0'}).toString();
   if(Buffer.byteLength(body)>15000)throw new GuideError(400,'Фрагмент слишком длинный для озвучки.');
   const id=createHash('sha256').update(body).digest('hex'),cached=cache.get(id);
   if(cached&&now()-cached.time<86400000)return cached.audio;
