@@ -113,3 +113,9 @@ Location is requested only after pressing the nearby button; there is no continu
 GitHub Actions runs on pull requests to `main`, pushes to `main`, and manual dispatch. It checks syntax and tests on Node.js 22 and 24, packages the standalone preview, then builds and runs the Docker container with a disposable `.env` fixture. No live credentials are needed. The stable aggregate job is **Required checks**.
 
 See [main branch protection](docs/BRANCH-PROTECTION.md) for the proposed policy and the administrator command needed to apply it. The JSON file itself does not protect the branch.
+
+## Deployment on your VM
+
+For `ws.nayg.ru` behind the existing dogovorovoi Nginx, follow
+[the VM deployment guide](docs/VM-DEPLOY.md). It covers the persistent `.env`,
+TLS certificate, separate runner, and deployments after successful main CI.

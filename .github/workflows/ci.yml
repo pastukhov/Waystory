@@ -37,7 +37,7 @@ jobs:
           for file in dist/*.mjs server/*.mjs scripts/*.mjs tests/*.mjs; do
             node --check "$file"
           done
-          bash -n scripts/ci-container-smoke.sh
+          for file in scripts/*.sh; do bash -n "$file"; done
       - name: Package standalone preview
         run: |
           node scripts/standalone.mjs
@@ -53,6 +53,8 @@ jobs:
           persist-credentials: false
       - name: Build, start, and check the container
         run: bash scripts/ci-container-smoke.sh
+      - name: Check production network and HTTPS proxy
+        run: bash scripts/ci-production-smoke.sh
 
   required-checks:
     name: Required checks
