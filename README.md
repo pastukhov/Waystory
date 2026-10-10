@@ -11,7 +11,7 @@ This is a **pilot with an optional Yandex AI Studio backend**. The interface and
 Implemented:
 
 - Three prepared walking-guide examples from central Saint Petersburg.
-- Browser text-to-speech, pause/resume, and independent speech-rate control.
+- Yandex SpeechKit MP3 playback with pause/resume and speech-rate control; device voice in demo mode.
 - Short, standard, and detailed stories. Completed sections are not repeated when depth changes; an interrupted section restarts from its beginning.
 - AI follow-up questions with heard context and a return to the main story; prepared answers in demo mode.
 - Wikipedia search and nearby-place discovery through browser geolocation.
@@ -21,8 +21,8 @@ Implemented:
 Set `YANDEX_API_KEY` and `YANDEX_FOLDER_ID` on the server to enable AI stories,
 questions, and photo recognition. Without credentials the app keeps demo mode.
 The browser never receives provider credentials. See [Yandex setup](docs/YANDEX-AI.md)
-for model choices, limits, VM migration and live verification. Voice playback still
-uses the device's text-to-speech engine, not SpeechKit.
+for model choices, limits, VM migration and live verification. Voice playback uses
+SpeechKit when configured; the key needs separate speech synthesis permissions.
 
 The Wikipedia integration, actual phone audio, GPS walking behavior, and background playback still need live device testing. Keep the app open during this pilot.
 
@@ -90,12 +90,13 @@ Open `artifacts/waystory-pilot.html` in a desktop browser. It embeds code, style
 dist/                  Static app source, ready for hosting
   app.mjs              UI and interaction flow
   core.mjs             Story queue and storage helpers
-  speech.mjs           Cancellable browser speech playback
+  speech.mjs           Cancellable cloud/device speech playback
   wiki.mjs             Wikipedia search and article retrieval
   data.mjs             Prepared sample stories
   art.mjs, assets/     Original stylized SVG illustrations
 server/index.mjs       Static server and bounded AI API
 server/guide.mjs       Yandex adapter, prompts, validation and story cache
+server/tts.mjs         SpeechKit synthesis, bounded MP3 cache and separate limits
 tests/                 Dependency-free Node tests
 scripts/standalone.mjs Single-file HTML packaging
 docs/PILOT.md          Scope and next steps
@@ -107,7 +108,7 @@ docs/PILOT.md          Scope and next steps
 
 Live AI requires the Node server and server-side Yandex credentials. Stories use
 Alice AI LLM, questions Alice AI LLM Flash, and photos Qwen3.6 35B by default.
-The pilot permits at most two concurrent paid requests and 120 requests per hour
+The text/vision API permits at most two concurrent paid requests and 120 requests per hour
 across all visitors, configurable in `.env`. Counters and the bounded 24-hour story
 cache are in memory and reset on restart. These are request limits, not a monetary
 budget or per-user billing. There is no account authentication in this pilot.
@@ -116,7 +117,7 @@ budget or per-user billing. There is no account authentication in this pilot.
 
 Sample stories link to their Wikipedia sources; historical claims still need editorial verification before commercial use. Live Wikipedia text links back to its article, where attribution, revision history, and licensing terms can be found. Wikimedia images require a separate attribution/license audit before commercial launch. Sample illustrations are stylized drawings, not photographs.
 
-Location is requested only after pressing the nearby button; there is no continuous tracking. Favorites and history use localStorage. A place enters listening history after a speech section finishes, not merely after opening its card. The user can clear listening history. Speech availability and processing depend on the browser and device. With AI enabled, source text and questions are sent to Yandex; photos are sent only after pressing the recognition button. Photos are not saved by this server. Requests ask Yandex to disable data logging.
+Location is requested only after pressing the nearby button; there is no continuous tracking. Favorites and history use localStorage. A place enters listening history after a speech section finishes, not merely after opening its card. The user can clear listening history. In cloud mode, spoken text is sent to SpeechKit and audio is cached in server memory. Device voice is used in demo mode. Nearby discovery sends coordinates to Russian, English and Turkish Wikipedia, expanding from 1.5 to 5 and 10 km only when no places are found; the UI reports radius and approximate GPS accuracy. Article coverage is not a complete map of sights. With AI enabled, source text and questions are sent to Yandex; photos are sent only after pressing the recognition button. Photos are not saved by this server. Requests ask Yandex to disable data logging.
 
 ## Pull request checks
 

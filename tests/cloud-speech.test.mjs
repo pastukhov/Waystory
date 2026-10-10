@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import * as speech from '../dist/speech.mjs';
+const tick=()=>new Promise(r=>setImmediate(r));
+function setup(fetchFn){const heard=[],errors=[];const audio={play:async()=>{},pause(){},removeAttribute(){},load(){}};const n=new speech.CloudNarrator({audio,fetchFn,onComplete:b=>heard.push(b.id),onError:e=>errors.push(e)});n.cloud=true;return {n,audio,heard,errors}}
+test('cancelled download cannot start audio or mark a fragment heard',async()=>{assert.equal(typeof speech.CloudNarrator,'function');let finish;const {n,audio,heard}=setup(()=>new Promise(r=>finish=r));n.play([{id:'a',text:'A'}]);n.stop();finish(new Response('audio'));await tick();assert.equal(audio.src,undefined);assert.deepEqual(heard,[])});
+test('pause while downloading holds audio until resume; end advances once',async()=>{assert.equal(typeof speech.CloudNarrator,'function');let finish,plays=0;const {n,audio,heard}=setup(()=>new Promise(r=>finish=r));audio.play=async()=>{plays++};n.play([{id:'a',text:'A'}]);n.pause();finish(new Response('audio'));await tick();assert.equal(plays,0);n.resume();await tick();assert.equal(plays,1);audio.onended();assert.deepEqual(heard,['a']);assert.equal(n.state,'finished')});
+test('long answers are split and complete only after the final audio part',async()=>{assert.equal(typeof speech.CloudNarrator,'function');const {n,audio,heard}=setup(async()=>new Response('audio'));n.play([{id:'a',text:'Я '.repeat(1100)}]);await tick();audio.onended();await tick();assert.deepEqual(heard,[]);audio.onended();await tick();assert.deepEqual(heard,[]);audio.onended();assert.deepEqual(heard,['a'])});
