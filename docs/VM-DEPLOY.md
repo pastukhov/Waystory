@@ -62,14 +62,15 @@ sudo install -m 0644 /opt/waystory/source/deploy/nginx/waystory.conf \
   /opt/nginx-sites/waystory.conf
 
 cd /opt/actions-runner/_work/dogovorovoi/dogovorovoi
-sudo git -c safe.directory="$PWD" status --short
+runner_owner="$(stat -c '%U' .git)"
+sudo -u "$runner_owner" git -C "$PWD" status --short
 ```
 
 If tracked files have local changes, preserve and reconcile them before updating.
 For a clean checkout, update from the merged main branch and rebuild Nginx:
 
 ```bash
-sudo git -c safe.directory="$PWD" pull --ff-only origin main
+sudo -u "$runner_owner" git -C "$PWD" pull --ff-only origin main
 sudo docker compose build nginx
 sudo docker compose run --rm --no-deps nginx nginx -t
 sudo docker compose up -d --no-deps nginx
