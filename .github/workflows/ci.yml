@@ -38,6 +38,8 @@ jobs:
             node --check "$file"
           done
           for file in scripts/*.sh; do bash -n "$file"; done
+          python3 -m py_compile scripts/import-yandex-settings.py
+          python3 tests/import-settings.test.py
       - name: Package standalone preview
         run: |
           node scripts/standalone.mjs
