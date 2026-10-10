@@ -9,3 +9,9 @@ test('speech validates input and origin before calling provider',async()=>{let c
 test('missing SpeechKit permission gives actionable error without leaking credentials',async()=>{const app=createApp({env,fetchFn:async()=>new Response('secret',{status:403})});const r=await request(app,{text:'Тест'});assert.equal(r.status,503);assert.match(r.body.toString(),/SpeechKit/);assert.doesNotMatch(r.body.toString(),/secret/)});
 test('speech-only credentials advertise cloud audio even without AI credentials',async()=>{const app=createApp({env:{YANDEX_TTS_API_KEY:'speech-secret'}});const config=await new Promise(resolve=>app.listeners('request')[0]({url:'/api/config',method:'GET',headers:{host:'localhost'}},{setHeader(){},writeHead(){},end:b=>resolve(JSON.parse(b))}));assert.equal(config.ai,false);assert.equal(config.tts,true)});
 test('English speech uses an English voice and has a separate audio cache',async()=>{let calls=0;const app=createApp({env:{...env,TTS_REQUESTS_PER_HOUR:'5'},fetchFn:async(url,o)=>{calls++;const p=new URLSearchParams(o.body);assert.equal(p.get('lang'),calls===1?'ru-RU':'en-US');assert.equal(p.get('voice'),calls===1?'filipp':'john');return new Response('ID3audio')}});assert.equal((await request(app,{text:'Paris',language:'ru'})).status,200);assert.equal((await request(app,{text:'Paris',language:'en'})).status,200);assert.equal(calls,2)});
+test('population grouping is removed before synthesis while the year stays intact',async()=>{
+ let spoken;const app=createApp({env,fetchFn:async(url,o)=>{spoken=new URLSearchParams(o.body).get('text');return new Response('ID3audio')}});
+ const text='В 2022 году здесь проживало 2\u202f144 человека.';
+ assert.equal((await request(app,{text,language:'ru'})).status,200);
+ assert.equal(spoken,'В 2022 году здесь проживало 2144 человека.');
+});

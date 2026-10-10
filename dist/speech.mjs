@@ -1,3 +1,4 @@
+import {normalizeSpeechText} from './speech-text.mjs';
 export class Narrator {
   constructor({synth=globalThis.speechSynthesis,Utterance=globalThis.SpeechSynthesisUtterance,onComplete=()=>{},onBlock=()=>{},onState=()=>{},onError=()=>{}}={}) {
     Object.assign(this,{synth,Utterance,onComplete,onBlock,onState,onError});this.language='ru';this.epoch=0;this.state='idle';this.rate=1;this.queue=[];
@@ -12,7 +13,7 @@ export class Narrator {
     const next=()=>{
       if(token!==this.epoch)return;
       const block=this.queue.shift();if(!block){this.setState('finished');return}
-      const u=new this.Utterance(block.text);u.lang=this.language==='en'?'en-US':'ru-RU';u.rate=this.rate;
+      const u=new this.Utterance(normalizeSpeechText(block.text));u.lang=this.language==='en'?'en-US':'ru-RU';u.rate=this.rate;
       const voice=this.synth.getVoices().find(v=>v.lang.toLowerCase().startsWith(this.language));if(voice)u.voice=voice;
       this.current=block;this.utterance=u;this.onBlock(block);this.setState('playing');
       u.onend=()=>{if(token!==this.epoch)return;this.onComplete(block);next()};
@@ -35,7 +36,7 @@ export class CloudNarrator extends Narrator {
   if(!this.cloud)return super.play(blocks);
   this.stop();const token=this.epoch;this.controller=new AbortController();const signal=this.controller.signal;
   const parts=[];
-  for(const block of blocks){let text=block.text;while(text.length>1000){let end=text.lastIndexOf(' ',1000);if(end<500)end=1000;parts.push({block,text:text.slice(0,end),last:false});text=text.slice(end).trimStart()}if(text)parts.push({block,text,last:true})}
+  for(const block of blocks){let text=normalizeSpeechText(block.text);while(text.length>1000){let end=text.lastIndexOf(' ',1000);if(end<500)end=1000;parts.push({block,text:text.slice(0,end),last:false});text=text.slice(end).trimStart()}if(text)parts.push({block,text,last:true})}
   const next=async()=>{
    if(token!==this.epoch)return;
    const part=parts.shift();if(!part){this.ready=false;this.release();this.setState('finished');return}
