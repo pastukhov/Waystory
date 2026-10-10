@@ -26,7 +26,7 @@ export class Narrator {
 
 // Keep the same block-completion contract for cloud and device voices.
 export class CloudNarrator extends Narrator {
- constructor(options={}){super(options);this.audio=options.audio||new Audio();this.fetchFn=options.fetchFn||fetch;this.cloud=false;this.ready=false}
+ constructor(options={}){super(options);this.audio=options.audio||new Audio();this.fetchFn=options.fetchFn||globalThis.fetch.bind(globalThis);this.cloud=false;this.ready=false}
  get rate(){return this._rate||1}
  set rate(value){this._rate=value;if(this.audio)this.audio.playbackRate=value}
  release(){if(this.objectUrl){URL.revokeObjectURL(this.objectUrl);this.objectUrl=null}}
