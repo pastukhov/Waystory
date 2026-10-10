@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {GuideError} from './guide.mjs';
+import {normalizeSpeechText} from '../dist/speech-text.mjs';
 export function createSpeech({env=process.env,fetchFn=fetch,now=Date.now}={}){
  const key=env.YANDEX_TTS_API_KEY||env.YANDEX_API_KEY;
  const enabled=Boolean(key)&&env.YANDEX_TTS_ENABLED!=='false';
@@ -13,7 +14,7 @@ export function createSpeech({env=process.env,fetchFn=fetch,now=Date.now}={}){
   const language=payload.language??'ru';
   if(!['ru','en'].includes(language))throw new GuideError(400,'Unsupported speech language.');
   const voice=voices[language],lang=language==='en'?'en-US':'ru-RU';
-  const body=new URLSearchParams({text:payload.text,voice,lang,format:'mp3',speed:'1.0'}).toString();
+  const body=new URLSearchParams({text:normalizeSpeechText(payload.text),voice,lang,format:'mp3',speed:'1.0'}).toString();
   if(Buffer.byteLength(body)>15000)throw new GuideError(400,'Фрагмент слишком длинный для озвучки.');
   const id=createHash('sha256').update(body).digest('hex'),cached=cache.get(id);
   if(cached&&now()-cached.time<86400000)return cached.audio;

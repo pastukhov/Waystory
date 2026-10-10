@@ -16,3 +16,8 @@ test('native browser fetch receives the global receiver, not the narrator',async
  }finally{globalThis.fetch=original}
 });
 test('cloud speech sends the chosen language with every text fragment',async()=>{let body;const {n}=setup(async(url,o)=>{body=JSON.parse(o.body);return new Response('audio')});n.language='en';n.play([{id:'a',text:'Hello'}]);await tick();assert.equal(body.language,'en');n.stop()});
+test('a thousands separator near a chunk boundary cannot split the number',async()=>{
+ const bodies=[];const {n,audio}=setup(async(url,o)=>{bodies.push(JSON.parse(o.body).text);return new Response('audio')});
+ n.play([{id:'a',text:'a '.repeat(498)+'2 144 человека.'}]);await tick();audio.onended();await tick();
+ assert.match(bodies.join(' '),/2144 человека/);assert.equal(bodies.some(s=>s.endsWith('2')),false);n.stop();
+});
