@@ -1,0 +1,25 @@
+services:
+  waystory:
+    image: ${WAYSTORY_IMAGE:-waystory:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ${WAYSTORY_ENV_FILE:-/opt/waystory/.env}
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "5173"
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks:
+      proxy:
+        aliases: [waystory-app]
+
+networks:
+  proxy:
+    external: true
+    name: ${WAYSTORY_PROXY_NETWORK:-dogovorovoi_default}
