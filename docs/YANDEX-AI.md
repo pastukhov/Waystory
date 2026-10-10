@@ -32,7 +32,7 @@ Changing detail changes the playback queue without another model call. Completed
 fragments are not repeated; an interrupted fragment restarts. Questions include
 the source text and heard fragments. Follow-up chat history is not retained.
 Photo recognition returns a hypothesis and optional Wikipedia search query.
-Browser/device speech still provides audio; SpeechKit is not connected.
+SpeechKit provides audio when configured; see the voice configuration below.
 
 Source texts are supplied by the browser from Wikipedia or the prepared demo
 material, not independently verified by the server. Source URLs are restricted
@@ -94,7 +94,7 @@ sudo docker exec dogovorovoi-nginx-1 nginx -t && \
 curl --fail --show-error https://ws.nayg.ru/api/config
 ```
 
-Expected configuration: `{"ai":true,"mode":"live","vision":true}`. Refresh the
+Expected configuration: `{"ai":true,"mode":"live","vision":true,"tts":true}`. Refresh the
 browser to pick up the new configuration. The Nginx update is needed because a
 5 MiB image becomes a larger Base64 JSON request. Existing default 1 MiB limits
 would reject normal phone photos before they reach the app.
@@ -123,3 +123,46 @@ Keep the best model per task, not necessarily the largest for every task.
 Local tests use a stubbed provider to verify HTTP contracts and error paths;
 they cannot establish real Yandex availability, model output quality or costs.
 The live verification must be run on the VM where the credentials exist.
+
+## Cloud voice
+
+SpeechKit API v1 synthesizes MP3 with the neural `filipp` voice by default.
+`YANDEX_TTS_VOICE` selects another v1-compatible Russian voice (for example
+`marina`); no quality ranking is implied. SpeechKit uses `YANDEX_TTS_API_KEY`
+when set, otherwise `YANDEX_API_KEY`. API-key authentication uses the service
+account's folder, without a folderId parameter.
+
+The service account needs `ai.speechkit-tts.user`, and a scoped API key needs
+`yc.ai.speechkitTts.execute`. A key that can generate stories is not necessarily
+allowed to synthesize speech. For 401/403 the app explains the missing access;
+it does not silently switch back to the disliked device voice.
+
+Defaults: `YANDEX_TTS_ENABLED=true`, `TTS_REQUESTS_PER_HOUR=120`, 2 concurrent
+calls, 30-second provider timeout. This is a separate limit from text/vision.
+Audio cache: at most 100 entries / 32 MiB / 24 hours, in memory only. Failed
+provider attempts count, cached responses do not. Restart clears both. Browser
+playback splits long fragments into <=1000-character pieces. Only the last
+audio piece marks the original fragment heard. No prefetch bills unseen text.
+Changing playback speed does not resynthesize audio.
+
+Deploy normally; no Nginx configuration change is required for speech. The
+existing Yandex key enables cloud mode automatically unless explicitly disabled
+with `YANDEX_TTS_ENABLED=false`. `/api/config` reports configuration, not a
+verified SpeechKit permission. To test one short paid synthesis from your laptop:
+
+```bash
+curl --fail-with-body --show-error https://ws.nayg.ru/api/speech \
+  -H 'Content-Type: application/json' \
+  --data '{"text":"Привет! Я ваш гид. Давайте узнаем историю этого места."}' \
+  --output waystory-voice.mp3
+```
+
+Open the MP3 after a successful request. If curl reports an error, its output
+file contains the readable error response, not audio. Then test playback, pause,
+resume and detail switching on Android. This integration has automated tests
+with a stubbed provider; actual voice quality and phone playback require a live
+check with the account's permissions.
+
+Official references: [synthesis request](https://aistudio.yandex.ru/ru/docs/speechkit/tts/request),
+[voices](https://aistudio.yandex.ru/ru/docs/speechkit/tts/voices),
+[authentication](https://aistudio.yandex.ru/ru/docs/speechkit/concepts/auth).

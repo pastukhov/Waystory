@@ -1,23 +1,46 @@
 import {splitSentences} from './core.mjs';
-const API='https://ru.wikipedia.org/w/api.php';
-async function api(params,signal){
-  const url=new URL(API);Object.entries({...params,format:'json',origin:'*'}).forEach(([k,v])=>url.searchParams.set(k,v));
-  const response=await fetch(url,{signal,headers:{Accept:'application/json'}});if(!response.ok)throw new Error('Википедия сейчас недоступна. Попробуйте позже или откройте пример.');
-  const json=await response.json();if(json.error)throw new Error('Не удалось получить места. Попробуйте другой запрос.');return json;
+const editions=['ru','en','tr'];
+const edition=lang=>editions.includes(lang)?lang:'ru';
+async function api(params,signal,lang='ru'){
+  const url=new URL('https://'+edition(lang)+'.wikipedia.org/w/api.php');Object.entries({...params,format:'json',origin:'*'}).forEach(([k,v])=>url.searchParams.set(k,v));
+  const controller=new AbortController();
+  const abort=()=>controller.abort();
+  if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
+  const timer=setTimeout(abort,10000);
+  try{
+   const response=await fetch(url,{signal:controller.signal,headers:{Accept:'application/json'}});
+   if(!response.ok)throw new Error('Википедия сейчас недоступна. Попробуйте позже.');
+   const json=await response.json();if(json.error)throw new Error('Не удалось получить места. Попробуйте другой запрос.');return json;
+  }catch(e){if(signal?.aborted)throw new DOMException('Поиск отменён.','AbortError');throw new Error('Википедия недоступна. Проверьте соединение и повторите поиск.')}
+  finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
 }
-function normalize(page){return {id:'wiki-'+page.pageid,pageid:page.pageid,title:page.title,category:'Из Википедии',subtitle:page.description||'Открыть рассказ и источник',source:'https://ru.wikipedia.org/?curid='+page.pageid,art:'generic',coords:page.coordinates?.[0]?[page.coordinates[0].lat,page.coordinates[0].lon]:null,demo:false,thumbnail:page.thumbnail?.source}}
+
+function normalize(page,lang='ru'){return {id:'wiki-'+(lang==='ru'?'':lang+'-')+page.pageid,lang,wikidata:page.pageprops?.wikibase_item,pageid:page.pageid,title:page.title,category:'Из Википедии',subtitle:page.description||'Открыть рассказ и источник',source:'https://'+lang+'.wikipedia.org/?curid='+page.pageid,art:'generic',coords:page.coordinates?.[0]?[page.coordinates[0].lat,page.coordinates[0].lon]:null,demo:false,thumbnail:page.thumbnail?.source}}
 export async function searchPlaces(query,signal){
   const j=await api({action:'query',generator:'search',gsrsearch:query,gsrnamespace:0,gsrlimit:8,prop:'pageimages|description|coordinates',piprop:'thumbnail',pithumbsize:600},signal);
-  return Object.values(j.query?.pages||{}).sort((a,b)=>(a.index||0)-(b.index||0)).map(normalize);
+  return Object.values(j.query?.pages||{}).sort((a,b)=>(a.index||0)-(b.index||0)).map(p=>normalize(p));
 }
 export async function nearbyPlaces(lat,lon,signal){
-  const j=await api({action:'query',generator:'geosearch',ggscoord:lat+'|'+lon,ggsradius:1500,ggslimit:12,prop:'pageimages|description|coordinates',piprop:'thumbnail',pithumbsize:600},signal);
-  return Object.values(j.query?.pages||{}).map(normalize).map(p=>({...p,distance:p.coords?distance(lat,lon,...p.coords):null})).sort((a,b)=>(a.distance??Infinity)-(b.distance??Infinity));
+ if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)throw new Error('Получены неверные координаты. Повторите определение местоположения.');
+ let partial=false;const found=new Map();
+ for(const radius of [1500,5000,10000]){
+  const results=await Promise.allSettled(editions.map(async lang=>{
+   const j=await api({action:'query',generator:'geosearch',ggscoord:lat+'|'+lon,ggsradius:radius,ggslimit:12,prop:'pageimages|description|coordinates|pageprops',ppprop:'wikibase_item',piprop:'thumbnail',pithumbsize:600},signal,lang);
+   return Object.values(j.query?.pages||{}).map(p=>normalize(p,lang));
+  }));
+  if(signal?.aborted)throw new DOMException('Поиск отменён.','AbortError');
+  if(results.every(r=>r.status==='rejected'))throw new Error('Википедия недоступна. Проверьте соединение и повторите поиск.');
+  partial ||= results.some(r=>r.status==='rejected');
+  for(const r of results)if(r.status==='fulfilled')for(const p of r.value){const key=p.wikidata||p.id;if(!found.has(key))found.set(key,p)}
+  const places=[...found.values()].map(p=>({...p,distance:p.coords?distance(lat,lon,...p.coords):null})).sort((a,b)=>(a.distance??Infinity)-(b.distance??Infinity)).slice(0,12);
+  if(places.length||radius===10000)return {places,radius,partial};
+ }
 }
+
 function distance(a,b,c,d){const r=Math.PI/180,x=Math.sin((c-a)*r/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin((d-b)*r/2)**2;return Math.round(6371000*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x)))}
 export async function loadPlace(place,signal){
   if(place.blocks)return place;
-  const j=await api({action:'query',pageids:place.pageid,prop:'extracts|info',explaintext:1,exchars:9000,inprop:'url'},signal);
+  const j=await api({action:'query',pageids:place.pageid,prop:'extracts|info',explaintext:1,exchars:9000,inprop:'url'},signal,edition(place.lang));
   const page=Object.values(j.query?.pages||{})[0];if(!page?.extract)throw new Error('Для этого места нет текста. Выберите другой объект.');
   const clean=page.extract.replace(/==+[^\n]*==+/g,'').replace(/\[[^\]]*\]/g,'').trim();
   const sentences=splitSentences(clean).slice(0,32);
