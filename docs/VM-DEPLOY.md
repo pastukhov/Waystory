@@ -2,8 +2,8 @@
 
 Target: Ubuntu x86_64, Docker/Compose, existing `dogovorovoi-nginx-1` and
 `dogovorovoi-certbot-1`. Waystory joins `dogovorovoi_default` as `waystory-app`
-and publishes no host ports. Nginx owns ports 80/443. The pilot is still in demo
-mode; deploying it does not enable a real AI provider.
+and publishes no host ports. Nginx owns ports 80/443. The pilot stays in demo mode until Yandex credentials are configured.
+See [Yandex AI setup](YANDEX-AI.md) to enable stories, questions and photos.
 
 Run the VM commands as `artem`. Wait until the Waystory deployment PR and the
 dogovorovoi persistent-sites PR are merged. Direct SSH from the coding environment

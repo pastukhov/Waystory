@@ -2,12 +2,13 @@ import {PLACES} from './data.mjs';
 import {illustration} from './art.mjs';
 import {buildQueue,restoreLibrary,saveEntry,validateImage,safeSourceUrl,createEpoch} from './core.mjs';
 import {Narrator} from './speech.mjs';
+import {requestGuide} from './ai-client.mjs';
 import {searchPlaces,nearbyPlaces,loadPlace} from './wiki.mjs';
 
 const $=id=>document.getElementById(id);
-const state={tab:'explore',places:PLACES,selected:null,heard:[],depth:1,current:null,ai:false,answer:false,photo:null,photoUrl:null};
-const placeEpoch=createEpoch(),searchEpoch=createEpoch(),answerEpoch=createEpoch();
-let placeController,searchController,answerController,toastTimer,recognition;
+const state={tab:'explore',places:PLACES,selected:null,heard:[],depth:1,current:null,ai:false,vision:false,answer:false,photo:null,photoUrl:null};
+const placeEpoch=createEpoch(),searchEpoch=createEpoch(),answerEpoch=createEpoch(),photoEpoch=createEpoch();
+let placeController,searchController,answerController,photoController,toastTimer,recognition;
 const read=key=>{try{return restoreLibrary(localStorage.getItem(key))}catch{return []}};
 let saved=read('waystory-saved'),history=read('waystory-history');
 function persist(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{toast('Не удалось сохранить на устройстве. Возможно, хранилище переполнено.')}}
@@ -61,7 +62,7 @@ function renderStory(){
  showArt($('story-art'),p);updateSaveButton();renderText();
  const url=safeSourceUrl(p.source);$('story-source').hidden=!url;if(url)$('story-source').href=url;
  $('story-source-note').textContent=p.demo?'Подготовленный пример на основе статьи. Иллюстрация стилизована. Это не ответ ИИ в реальном времени.':p.aiGenerated?'Рассказ создан ИИ по материалу статьи. Проверьте важные детали в источнике.':'Озвучивается текст статьи, разделённый на фрагменты. Доступен по лицензии статьи; авторы и история изменений — в источнике. Это не ответ ИИ.';
- $('question-chips').replaceChildren(...(p.questions||[]).map(q=>{const b=document.createElement('button');b.textContent=q.question;b.onclick=()=>ask(q.question,q.answer);return b}));
+ $('question-chips').replaceChildren(...(p.questions||[]).map(q=>{const b=document.createElement('button');b.textContent=q.question;b.onclick=()=>ask(q.question,state.ai?undefined:q.answer);return b}));
  $('question-input').disabled=!state.ai;$('send-question').disabled=!state.ai;$('voice-question').disabled=!state.ai;
  $('question-input').placeholder=state.ai?'Что вам интересно об этом месте?':'Свободный вопрос — после подключения ИИ';
  $('question-note').textContent=state.ai?'Ответ опирается на статью и контекст рассказа.':'В деморежиме доступны готовые вопросы выше.';
@@ -72,7 +73,7 @@ async function selectPlace(place){
  $('story-title').textContent=place.title;$('story-kind').textContent='ЗАГРУЖАЕМ ИСТОРИЮ';$('story-text').replaceChildren();$('answer').hidden=true;$('continue-story').hidden=true;$('story-play').disabled=true;$('story-restart').disabled=true;$('story-save').disabled=true;$('question-panel').hidden=true;$('story-source').hidden=true;$('story-source-note').textContent='';$('story-address').textContent='';$('story-category').textContent='';showArt($('story-art'),place);message('');openDialog('story-dialog');$('player').hidden=true;document.body.classList.remove('has-player');
  try{
    let p=await loadPlace(place,placeController.signal);if(!placeEpoch.isCurrent(token))return;
-   if(state.ai&&!p.demo){try{const result=await aiRequest({action:'story',place:{title:p.title,source:p.source,text:p.sourceText||p.blocks.map(b=>b.text).join('\n')}},placeController.signal);if(result.blocks?.length)p={...p,blocks:result.blocks,aiGenerated:true}}catch(e){if(e.name==='AbortError')throw e;message('ИИ-рассказ недоступен. Можно слушать исходный текст Википедии.')}}
+   if(state.ai&&!p.aiGenerated){try{const sourceText=p.sourceText||p.blocks.map(b=>b.text).join('\n');message('ИИ готовит рассказ…');const result=await aiRequest({action:'story',place:{title:p.title,source:p.source,text:sourceText}},placeController.signal);if(result.blocks?.length){p={...p,blocks:result.blocks,sourceText,aiGenerated:true,demo:false};if(placeEpoch.isCurrent(token))message('')}}catch(e){if(e.name==='AbortError')throw e;if(placeEpoch.isCurrent(token))message((e.message||'ИИ-рассказ недоступен.')+' Можно слушать подготовленный текст.')}}
    if(!placeEpoch.isCurrent(token))return;state.selected=p;$('story-play').disabled=false;$('story-restart').disabled=false;$('story-save').disabled=false;$('question-panel').hidden=false;renderStory();
  }catch(e){if(e.name==='AbortError')return;if(placeEpoch.isCurrent(token))message(e.message||'Не удалось загрузить рассказ. Попробуйте другое место.')}
 }
@@ -85,7 +86,7 @@ $('story-save').onclick=()=>{if(state.selected)toggleSave(state.selected)};
 $('reopen-story').onclick=()=>openDialog('story-dialog');
 $('player-stop').onclick=()=>{narrator.stop();state.current=null;$('player').hidden=true;document.body.classList.remove('has-player')};
 $('rate').oninput=e=>{narrator.rate=Number(e.target.value);$('rate-value').textContent=narrator.rate.toFixed(2).replace(/0$/,'')+'×'};
-async function aiRequest(payload,signal){const r=await fetch('/api/guide',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal});let data;try{data=await r.json()}catch{throw new Error('ИИ пока не подключён. Попробуйте готовые вопросы.')}if(!r.ok)throw new Error(data.error||'Не удалось получить ответ.');return data}
+function aiRequest(payload,signal){return requestGuide(payload,{signal})}
 async function ask(question,prepared){
  if(!state.selected)return;const current=state.selected;const token=answerEpoch.next();answerController?.abort();answerController=new AbortController();narrator.stop();state.answer=true;$('answer').hidden=false;$('answer').textContent='Готовим ответ…';$('continue-story').hidden=false;
  try{const text=prepared||(await aiRequest({action:'question',question,place:{title:current.title,source:current.source,text:current.sourceText||current.blocks.map(b=>b.text).join('\n')},heard:current.blocks.filter(b=>state.heard.includes(b.id)).map(b=>b.text)},answerController.signal)).text;
@@ -108,8 +109,34 @@ $('locate').onclick=()=>{
  navigator.geolocation.getCurrentPosition(async pos=>{if(!searchEpoch.isCurrent(token)){$('locate').disabled=false;return}setStatus('Ищем места в радиусе 1,5 км…');try{const results=await nearbyPlaces(pos.coords.latitude,pos.coords.longitude,signal);if(!searchEpoch.isCurrent(token))return;state.places=results;$('section-title').textContent='Рядом с вами';$('location-label').textContent='В РАДИУСЕ 1,5 КМ';$('reset-places').hidden=false;setStatus('Места из Википедии. Погрешность координат — около '+Math.round(pos.coords.accuracy)+' м.');renderPlaces()}catch(e){if(e.name!=='AbortError'&&searchEpoch.isCurrent(token))setStatus(e.message,true)}finally{$('locate').disabled=false}},err=>{$('locate').disabled=false;if(searchEpoch.isCurrent(token))setStatus(err.code===1?'Доступ к местоположению запрещён. Разрешите его в настройках сайта или воспользуйтесь поиском.':'Не удалось определить местоположение. Попробуйте на открытом месте или введите название.',true)},{enableHighAccuracy:false,timeout:15000,maximumAge:60000});
 };
 $('photo-open').onclick=()=>openDialog('photo-dialog');
-$('photo-input').onchange=e=>{const file=e.target.files[0];if(!file)return;const error=validateImage(file);if(error){$('photo-note').textContent=error;return}if(state.photoUrl)URL.revokeObjectURL(state.photoUrl);state.photo=file;state.photoUrl=URL.createObjectURL(file);$('photo-preview').src=state.photoUrl;$('photo-preview').hidden=false;$('photo-placeholder').hidden=true;$('photo-result').hidden=true;$('photo-note').textContent=state.ai?'Фото отправится на обработку только после нажатия кнопки. При сомнении гид попросит уточнение.':'Фото выбрано и остаётся в браузере. Для распознавания нужно подключить ИИ.';$('identify-photo').disabled=!state.ai};
-$('identify-photo').onclick=async()=>{if(!state.ai||!state.photo)return;$('identify-photo').disabled=true;$('photo-note').textContent='Рассматриваем фото…';const selectedPhoto=state.photo;try{const image=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(selectedPhoto)});const result=await aiRequest({action:'identify',image,context:$('photo-context').value.trim()});if(state.photo!==selectedPhoto)return;$('photo-result').hidden=false;const p=document.createElement('p');p.textContent=result.text;$('photo-result').replaceChildren(p);if(result.query){const b=document.createElement('button');b.className='button secondary';b.textContent='Найти это место в источниках ↗';b.onclick=()=>{$('photo-dialog').close();tab('explore');$('search-input').value=result.query;$('search-form').requestSubmit()};$('photo-result').append(b)}$('photo-note').textContent='Это предположение по изображению. Проверьте название по источникам.'}catch(e){$('photo-note').textContent=e.message||'Не удалось обработать фото.'}finally{$('identify-photo').disabled=!state.ai||!state.photo}};
-async function config(){try{const r=await fetch('/api/config',{headers:{Accept:'application/json'}});if(!r.ok||!r.headers.get('content-type')?.includes('application/json'))return;const c=await r.json();state.ai=c.ai===true;if(state.ai){$('mode-note').querySelector('p').textContent='ИИ подключён. Можно распознавать места по фото и задавать свои вопросы по ходу рассказа.';$('photo-note').textContent='Выберите фото. Оно отправится только после нажатия «Узнать».';$('identify-photo').disabled=!state.photo;if(state.selected)renderStory()}}catch{/* Static hosting intentionally has no AI server. */}}
+function cancelPhoto(){photoEpoch.next();photoController?.abort();$('identify-photo').disabled=!state.vision||!state.photo}
+$('photo-input').onchange=e=>{
+ const file=e.target.files[0];if(!file)return;cancelPhoto();
+ if(state.photoUrl)URL.revokeObjectURL(state.photoUrl);
+ state.photo=null;state.photoUrl=null;$('photo-result').hidden=true;
+ const error=validateImage(file);
+ if(error){$('photo-note').textContent=error;$('photo-preview').hidden=true;$('photo-placeholder').hidden=false;$('identify-photo').disabled=true;return}
+ state.photo=file;state.photoUrl=URL.createObjectURL(file);$('photo-preview').src=state.photoUrl;$('photo-preview').hidden=false;$('photo-placeholder').hidden=true;
+ $('photo-note').textContent=state.vision?'Фото отправится на обработку только после нажатия кнопки. При сомнении гид попросит уточнение.':'Фото выбрано и остаётся в браузере. Для распознавания нужно подключить ИИ.';
+ $('identify-photo').disabled=!state.vision;
+};
+$('identify-photo').onclick=async()=>{
+ if(!state.vision||!state.photo)return;
+ photoController?.abort();photoController=new AbortController();const signal=photoController.signal;
+ const token=photoEpoch.next(),selectedPhoto=state.photo;
+ $('identify-photo').disabled=true;$('photo-note').textContent='Рассматриваем фото…';
+ try{
+  const image=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(selectedPhoto)});
+  if(!photoEpoch.isCurrent(token))return;
+  const result=await aiRequest({action:'identify',image,context:$('photo-context').value.trim()},signal);
+  if(!photoEpoch.isCurrent(token))return;
+  $('photo-result').hidden=false;const p=document.createElement('p');p.textContent=result.text;$('photo-result').replaceChildren(p);
+  if(result.query){const b=document.createElement('button');b.className='button secondary';b.textContent='Найти это место в источниках ↗';b.onclick=()=>{$('photo-dialog').close();tab('explore');$('search-input').value=result.query;$('search-form').requestSubmit()};$('photo-result').append(b)}
+  $('photo-note').textContent='Это предположение по изображению. Проверьте название по источникам.';
+ }catch(e){if(e.name!=='AbortError'&&photoEpoch.isCurrent(token))$('photo-note').textContent=e.message||'Не удалось обработать фото.'}
+ finally{if(photoEpoch.isCurrent(token))$('identify-photo').disabled=!state.vision||!state.photo}
+};
+$('photo-dialog').addEventListener('close',()=>{cancelPhoto();$('photo-note').textContent='Фото отправится только после нажатия «Узнать».'});
+async function config(){try{const r=await fetch('/api/config',{headers:{Accept:'application/json'}});if(!r.ok||!r.headers.get('content-type')?.includes('application/json'))return;const c=await r.json();state.ai=c.ai===true;state.vision=c.vision===true;if(state.ai){$('mode-note').querySelector('p').textContent='ИИ-гид подключён: рассказы по источникам, вопросы и распознавание фото. Подробность можно менять во время прослушивания.';$('about-ai-title').textContent='ИИ-гид подключён';$('about-ai-description').textContent='Рассказы и ответы создаёт ИИ по переданному источнику. Фото помогает предположить название места. Озвучка использует голос вашего устройства.';$('photo-note').textContent='Выберите фото. Оно отправится только после нажатия «Узнать».';$('identify-photo').disabled=!state.photo;if(state.selected)renderStory()}}catch{/* Static hosting intentionally has no AI server. */}}
 renderPlaces();updateSaveButton();config();
-window.addEventListener('pagehide',()=>{narrator.stop();recognition?.abort();placeController?.abort();answerController?.abort();searchController?.abort();if(state.photoUrl)URL.revokeObjectURL(state.photoUrl)});
+window.addEventListener('pagehide',()=>{narrator.stop();recognition?.abort();placeController?.abort();answerController?.abort();searchController?.abort();photoController?.abort();if(state.photoUrl)URL.revokeObjectURL(state.photoUrl)});
