@@ -15,3 +15,4 @@ test('native browser fetch receives the global receiver, not the narrator',async
   assert.equal(receiver,globalThis);assert.deepEqual(errors,[]);assert.equal(n.state,'playing');n.stop();
  }finally{globalThis.fetch=original}
 });
+test('cloud speech sends the chosen language with every text fragment',async()=>{let body;const {n}=setup(async(url,o)=>{body=JSON.parse(o.body);return new Response('audio')});n.language='en';n.play([{id:'a',text:'Hello'}]);await tick();assert.equal(body.language,'en');n.stop()});

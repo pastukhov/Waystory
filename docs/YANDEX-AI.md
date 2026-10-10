@@ -27,7 +27,7 @@ API key and folder ID. Reuse `YANDEX_API_KEY` and `YANDEX_FOLDER_ID` from
 dogovorovoi. The service account needs `ai.languageModels.user` and the key scope
 `yc.ai.foundationModels.execute`. No new npm dependency is required.
 
-The app generates a complete set of short narrative fragments at depths 0/1/2.
+The app generates one cumulative narrative at depths 0/1/2 when source coverage permits; thin sources may return only depth 0 or 0/1.
 Changing detail changes the playback queue without another model call. Completed
 fragments are not repeated; an interrupted fragment restarts. Questions include
 the source text and heard fragments. Follow-up chat history is not retained.
@@ -49,7 +49,7 @@ accounts or persistent per-user usage tracking exist in this pilot.
 Up to 100 successful stories are cached in process memory for 24 hours. Cached
 stories do not consume the request budget. Cache and counters reset at restart.
 Saved generated stories in the browser can be reopened without regeneration.
-Questions and photos are not cached. Photos are limited to 5 MiB, sent only on
+Batched title/description translations share the bounded story cache and request quota. Questions and photos are not cached. Photos are limited to 5 MiB, sent only on
 button press, and not written to disk. Request data logging is disabled in the
 provider request header; no provider response/error body or credential is logged
 by this adapter.
@@ -126,9 +126,9 @@ The live verification must be run on the VM where the credentials exist.
 
 ## Cloud voice
 
-SpeechKit API v1 synthesizes MP3 with the neural `filipp` voice by default.
-`YANDEX_TTS_VOICE` selects another v1-compatible Russian voice (for example
-`marina`); no quality ranking is implied. SpeechKit uses `YANDEX_TTS_API_KEY`
+SpeechKit API v1 synthesizes MP3 with `filipp` for Russian and `john` for English by default.
+`YANDEX_TTS_VOICE_RU` (or legacy `YANDEX_TTS_VOICE`) selects another v1-compatible Russian voice (for example
+`marina`); `YANDEX_TTS_VOICE_EN` selects the English voice. No quality ranking is implied. SpeechKit uses `YANDEX_TTS_API_KEY`
 when set, otherwise `YANDEX_API_KEY`. API-key authentication uses the service
 account's folder, without a folderId parameter.
 
@@ -166,3 +166,24 @@ check with the account's permissions.
 Official references: [synthesis request](https://aistudio.yandex.ru/ru/docs/speechkit/tts/request),
 [voices](https://aistudio.yandex.ru/ru/docs/speechkit/tts/voices),
 [authentication](https://aistudio.yandex.ru/ru/docs/speechkit/concepts/auth).
+
+## Language and story validation
+
+The client sends `language: ru|en` on every guide and speech request. Omitted
+language defaults to Russian for compatibility; other values are rejected before
+billing. Story responses include translated `title`, `language`, `storyVersion: 2`
+and `detailLimited`. Cached generated stories from another language or format
+are regenerated. `translatePlaces` translates up to 12 card titles/snippets in
+one request using the question model; it cannot add source facts.
+
+Stories have exactly one essential block, then ordered optional expansion
+levels. Each expansion must add at least 50% of the preceding cumulative word
+count. Duplicate sections and out-of-order levels are rejected. Rich-source
+prompts target approximately 40–65 words short, 140–225 ordinary, 320–485
+detailed; sparse sources omit unsupported detail instead of inventing it.
+Word-count checks cannot verify factual or semantic quality.
+
+Provider replies and audio for Russian and English are cached independently.
+To verify a real English story, include `"language":"en"` in `/api/guide`, then
+use the same field for `/api/speech`. No key or server setting change is required
+for the default English voice. The original source link is not translated.

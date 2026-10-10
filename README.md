@@ -6,13 +6,13 @@ A mobile-first city audio guide pilot. Explore a place, listen to its story, and
 
 ## Current status
 
-This is a **pilot with an optional Yandex AI Studio backend**. The interface and sample stories currently use Russian. English content and localization are not implemented yet.
+This is a **pilot with an optional Yandex AI Studio backend**. The interface, generated titles/stories/answers, speech and voice questions follow the first supported browser language (Russian or English; English fallback). Prepared examples retain their original Russian source text until AI translation.
 
 Implemented:
 
 - Three prepared walking-guide examples from central Saint Petersburg.
 - Yandex SpeechKit MP3 playback with pause/resume and speech-rate control; device voice in demo mode.
-- Short, standard, and detailed stories. Completed sections are not repeated when depth changes; an interrupted section restarts from its beginning.
+- Cumulative short, standard, and detailed stories. Higher levels append connected new material; thin sources honestly expose fewer levels. Completed sections are not repeated when depth changes; an interrupted section restarts from its beginning.
 - AI follow-up questions with heard context and a return to the main story; prepared answers in demo mode.
 - Wikipedia search and nearby-place discovery through browser geolocation.
 - Favorites and listening history stored on the current device.
@@ -108,7 +108,7 @@ docs/PILOT.md          Scope and next steps
 
 Live AI requires the Node server and server-side Yandex credentials. Stories use
 Alice AI LLM, questions Alice AI LLM Flash, and photos Qwen3.6 35B by default.
-The text/vision API permits at most two concurrent paid requests and 120 requests per hour
+The text/vision API permits at most two concurrent paid requests (including batched card translations) and 120 requests per hour
 across all visitors, configurable in `.env`. Counters and the bounded 24-hour story
 cache are in memory and reset on restart. These are request limits, not a monetary
 budget or per-user billing. There is no account authentication in this pilot.
@@ -130,3 +130,29 @@ See [main branch protection](docs/BRANCH-PROTECTION.md) for the proposed policy 
 For `ws.nayg.ru` behind the existing dogovorovoi Nginx, follow
 [the VM deployment guide](docs/VM-DEPLOY.md). It covers the persistent `.env`,
 TLS certificate, separate runner, and deployments after successful main CI.
+
+## Browser language and narrative depth
+
+Browser language preferences select Russian or English on page load. Narration
+uses the matching SpeechKit voice (`filipp` / `john`). AI translates the place
+heading and story, answers and photo descriptions into that language. Discovery
+card names/descriptions from other editions are translated in batches using the
+question model; these calls share the AI quota. Source links retain the original
+article and language. If translation fails, the original is labeled and
+foreign-language narration stays disabled. Offline examples remain original
+Russian source material until AI is available.
+
+The story is one ordered sequence: essentials (depth 0), continuing explanation
+(depth 1), further detail (depth 2). Selecting a higher depth includes earlier
+parts. Completed audio parts are not repeated when increasing depth mid-story.
+The prompt targets 40–65 / 140–225 / 320–485 cumulative words when the source
+supports that detail. Server validation requires each extra level to add at
+least half of the preceding total word count, rejects duplicate sections and
+wrong order, and allows short-only sources. Length validation cannot guarantee
+semantic coherence; live stories still need editorial listening.
+
+Language and story-format version are included in cache identity; saved AI
+stories from older versions or other languages regenerate on opening. Estimated
+time uses seconds and minutes. Unavailable detail levels are disabled with a
+source-coverage explanation. GitHub CI tests both language flows in Chromium,
+using deterministic fixtures rather than paid provider requests.

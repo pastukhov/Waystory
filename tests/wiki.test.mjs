@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {nearbyPlaces,loadPlace} from '../dist/wiki.mjs';
+import {searchPlaces,nearbyPlaces,loadPlace} from '../dist/wiki.mjs';
+test('text search uses the requested English edition and preserves its source',async()=>{
+ const old=globalThis.fetch;let host;
+ globalThis.fetch=async url=>{host=new URL(url).hostname;return Response.json({query:{pages:{1:{pageid:1,title:host==='en.wikipedia.org'?'Red Tower':'Красная башня'}}}})};
+ try{const places=await searchPlaces('Red Tower',undefined,'en');assert.equal(host,'en.wikipedia.org');assert.equal(places[0].title,'Red Tower');assert.equal(places[0].lang,'en');assert.equal(places[0].source,'https://en.wikipedia.org/?curid=1')}finally{globalThis.fetch=old}
+});
+test('nearby prefers English duplicates while retaining other language coverage',async()=>{
+ const old=globalThis.fetch;
+ globalThis.fetch=async url=>{const lang=new URL(url).hostname.split('.')[0];return Response.json({query:{pages:{1:{pageid:1,title:lang==='en'?'Red Tower':'Красная башня',pageprops:{wikibase_item:'Q1'}},...(lang==='tr'?{2:{pageid:2,title:'Kale',pageprops:{wikibase_item:'Q2'}}}:{})}}})};
+ try{const result=await nearbyPlaces(36.55,32,undefined,'en');assert.equal(result.places.length,2);assert.equal(result.places[0].title,'Red Tower');assert.equal(result.places[0].lang,'en');assert.match(result.places[0].source,/en.wikipedia/);assert.equal(result.places[1].lang,'tr');assert.equal(result.radius,1500);assert.equal(result.partial,false)}finally{globalThis.fetch=old}
+});
 test('nearby expands search and preserves language when Russian coverage is empty',async()=>{
  const old=globalThis.fetch;
  globalThis.fetch=async url=>{const u=new URL(url);return Response.json(u.hostname==='tr.wikipedia.org'&&Number(u.searchParams.get('ggsradius'))>=5000?{query:{pages:{1:{pageid:1,title:'Kızıl Kule',coordinates:[{lat:36.54,lon:32}],pageprops:{wikibase_item:'Q1'}}}}}:{query:{pages:{}}})};

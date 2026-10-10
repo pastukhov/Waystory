@@ -16,15 +16,17 @@ async function api(params,signal,lang='ru'){
 }
 
 function normalize(page,lang='ru'){return {id:'wiki-'+(lang==='ru'?'':lang+'-')+page.pageid,lang,wikidata:page.pageprops?.wikibase_item,pageid:page.pageid,title:page.title,category:'Из Википедии',subtitle:page.description||'Открыть рассказ и источник',source:'https://'+lang+'.wikipedia.org/?curid='+page.pageid,art:'generic',coords:page.coordinates?.[0]?[page.coordinates[0].lat,page.coordinates[0].lon]:null,demo:false,thumbnail:page.thumbnail?.source}}
-export async function searchPlaces(query,signal){
-  const j=await api({action:'query',generator:'search',gsrsearch:query,gsrnamespace:0,gsrlimit:8,prop:'pageimages|description|coordinates',piprop:'thumbnail',pithumbsize:600},signal);
-  return Object.values(j.query?.pages||{}).sort((a,b)=>(a.index||0)-(b.index||0)).map(p=>normalize(p));
+export async function searchPlaces(query,signal,language='ru'){
+  const lang=language==='en'?'en':'ru';
+  const j=await api({action:'query',generator:'search',gsrsearch:query,gsrnamespace:0,gsrlimit:8,prop:'pageimages|description|coordinates',piprop:'thumbnail',pithumbsize:600},signal,lang);
+  return Object.values(j.query?.pages||{}).sort((a,b)=>(a.index||0)-(b.index||0)).map(p=>normalize(p,lang));
 }
-export async function nearbyPlaces(lat,lon,signal){
+export async function nearbyPlaces(lat,lon,signal,language='ru'){
  if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)throw new Error('Получены неверные координаты. Повторите определение местоположения.');
+ const preferred=language==='en'?'en':'ru',orderedEditions=[preferred,...editions.filter(lang=>lang!==preferred)];
  let partial=false;const found=new Map();
  for(const radius of [1500,5000,10000]){
-  const results=await Promise.allSettled(editions.map(async lang=>{
+  const results=await Promise.allSettled(orderedEditions.map(async lang=>{
    const j=await api({action:'query',generator:'geosearch',ggscoord:lat+'|'+lon,ggsradius:radius,ggslimit:12,prop:'pageimages|description|coordinates|pageprops',ppprop:'wikibase_item',piprop:'thumbnail',pithumbsize:600},signal,lang);
    return Object.values(j.query?.pages||{}).map(p=>normalize(p,lang));
   }));
