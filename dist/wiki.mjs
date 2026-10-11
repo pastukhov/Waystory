@@ -1,6 +1,6 @@
 import {splitSentences} from './core.mjs';
 const editions=['ru','en','tr'];
-const edition=lang=>editions.includes(lang)?lang:'ru';
+const edition=lang=>{if(!/^[a-z]{2,3}(?:-[a-z]{2,12})?$/.test(lang))throw new Error('Invalid Wikipedia edition');return lang};
 async function api(params,signal,lang='ru'){
   const url=new URL('https://'+edition(lang)+'.wikipedia.org/w/api.php');Object.entries({...params,format:'json',origin:'*'}).forEach(([k,v])=>url.searchParams.set(k,v));
   const controller=new AbortController();
@@ -49,3 +49,4 @@ export async function loadPlace(place,signal){
   const blocks=[];for(let i=0;i<sentences.length;i+=3)blocks.push({id:place.id+'-'+i,depth:i===0?0:i<9?1:2,title:i===0?'Главное':i<9?'История и детали':'Подробнее',text:sentences.slice(i,i+3).join(' ')});
   return {...place,originalTitle:page.title||place.originalTitle||place.title,coords:page.coordinates?.[0]?[page.coordinates[0].lat,page.coordinates[0].lon]:place.coords,blocks,source:page.fullurl||place.source,sourceText:clean.slice(0,9000),questions:[]};
 }
+

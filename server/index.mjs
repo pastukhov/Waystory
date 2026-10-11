@@ -1,3 +1,6 @@
+import {configureSearchPolicy} from './sources/search-policy.mjs';
+import {createAcquisition} from './sources/acquire.mjs';
+import {createSearchProvider} from './sources/search-provider.mjs';
 import http from 'node:http';
 import {createAuth} from './auth.mjs';
 import {readFile} from 'node:fs/promises';
@@ -33,9 +36,13 @@ export function createApp(options={}){
  const wikidata=sourceRequest?createWikidataProvider({request:sourceRequest}):null;
  const enrichment=store?createWebEnrichment({db:store.db,env:options.env,fetchFn:options.webFetchFn}):null;
  const places=options.places||(store?createPlaces({store,enrichment,providers:options.sourceProviders||[createWikipediaProvider({request:sourceRequest}),createOsmProvider({request:sourceRequest,endpoint:settings.osmEndpoint}),wikidata,createWikivoyageProvider({request:sourceRequest,wikidata})]}):null);
- const guide=createGuide({...options,collectSources:options.collectSources||(places?async(id,o)=>{const p=store.getById(id);if(!p)throw new GuideError(404,'Место не найдено. Повторите поиск.');return places.collect(p,{...o,includeWeb:true})}:undefined),resolveLegacy:options.resolveLegacy||(places?async(ref,o)=>{if(ref.title){const wiki=places.providers.find(p=>p.id==='wikipedia');const r=await wiki.resolveTitle(ref.title,ref.language,o);if(!r.places?.length)throw new GuideError(404,'Место не найдено.');return store.upsert(r.places[0]).id}return (await places.resolve(ref,o)).place.id}:undefined)}),speech=createSpeech(options),auth=options.auth||createAuth({env:options.env,fetchFn:options.authFetchFn,dbPath:options.authDbPath});const server=http.createServer(async(req,res)=>{
+ const policyJson=(options.env||process.env).GLOBAL_WEB_USE_POLICY_JSON;
+ const globalPolicyReady=policyJson?configureSearchPolicy(JSON.parse(policyJson)):false;
+ const globalSearch=store?createSearchProvider({db:store.db,env:options.env,fetchFn:options.webFetchFn}):null;
+ const acquire=places?createAcquisition({db:store?.db,collect:(p,o)=>places.collect(p,o),search:(options.env||process.env).GLOBAL_SOURCE_DISCOVERY_ENABLED==='true'&&globalPolicyReady?globalSearch:null,report:entry=>console.log(JSON.stringify(entry))}):null;
+ const guide=createGuide({...options,collectSources:options.collectSources||(places?async(id,o)=>{const p=store.getById(id);if(!p)throw new GuideError(404,'Место не найдено. Повторите поиск.');const result=await acquire(p,o);return {...result.bundle,outcome:result.outcome,diagnosticId:result.diagnosticId}}:undefined),resolveLegacy:options.resolveLegacy||(places?async(ref,o)=>{if(ref.title){const wiki=places.providers.find(p=>p.id==='wikipedia');const r=await wiki.resolveTitle(ref.title,ref.language,o);if(!r.places?.length)throw new GuideError(404,'Место не найдено.');return store.upsert(r.places[0]).id}return (await places.resolve(ref,o)).place.id}:undefined)}),speech=createSpeech(options),auth=options.auth||createAuth({env:options.env,fetchFn:options.authFetchFn,dbPath:options.authDbPath});const server=http.createServer(async(req,res)=>{
  const json=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data))};
- res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: https://upload.wikimedia.org; media-src 'self' blob:; connect-src 'self' https://ru.wikipedia.org https://en.wikipedia.org https://tr.wikipedia.org; object-src 'none'; base-uri 'self'");
+ res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: https://upload.wikimedia.org; media-src 'self' blob:; connect-src 'self' https://*.wikipedia.org; object-src 'none'; base-uri 'self'");
  let pathname;try{pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname)}catch{return json(400,{error:'Неверный адрес.'})}
  const redirect=(location,cookies)=>{res.writeHead(303,{'Location':location,'Cache-Control':'no-store','Referrer-Policy':'no-referrer',...(cookies?{'Set-Cookie':cookies}:{})});res.end()};
  if(pathname.startsWith('/api/places/')){
@@ -106,7 +113,7 @@ export function createApp(options={}){
   }catch(error){
    const status=error instanceof GuideError?error.status:500;
    if(status===429)res.setHeader('Retry-After','60');
-   if(!res.destroyed)return json(status,{error:error instanceof GuideError?error.message:'Ошибка сервера. Попробуйте позже.'});
+   if(!res.destroyed)return json(status,{error:error instanceof GuideError?error.message:'Ошибка сервера. Попробуйте позже.',...(error.code&&error instanceof GuideError?{code:error.code,retryable:error.retryable,diagnosticId:error.diagnosticId}:{})});
   }
   return;
  }
@@ -120,3 +127,4 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
  const {host,port}=serverAddress();
  createApp().listen(port,host,()=>console.log('Waystory: http://'+host+':'+port));
 }
+

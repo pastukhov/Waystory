@@ -5,7 +5,14 @@ export function providerFailure(service,status,durationMs,write=console.error){
  write(JSON.stringify(entry));return entry.requestId;
 }
 export function safeLogLine(line){
- try{const p=JSON.parse(line);if(p.event!=='waystory_provider_error'||!['ai','speech','unknown'].includes(p.service)||!(/^[a-f0-9-]{36}$/.test(p.requestId))||!(p.status===null||Number.isInteger(p.status)&&p.status>=100&&p.status<=599)||!Number.isFinite(p.durationMs)||p.durationMs<0)return null;
+ try{const p=JSON.parse(line);
+ if(p.event==='waystory_sources'){
+  if(!/^[a-f0-9-]{36}$/.test(p.requestId)||! /^(osm:(node|way|relation):[1-9]\d*|wd:Q[1-9]\d*|wiki:[a-z-]+:[1-9]\d*)$/.test(p.placeId)||!['ready','limited','context_only','no_material','temporarily_unavailable','not_configured','budget_exhausted','policy_restricted'].includes(p.outcome)||!Number.isFinite(p.durationMs)||p.durationMs<0)return null;
+  const statuses=(Array.isArray(p.statuses)?p.statuses:[]).slice(0,12).map(s=>({provider:['osm','wikipedia','wikidata','wikivoyage','official-web','global-web','collection'].includes(s.provider)?s.provider:'unknown',status:['ok','empty','partial','unavailable','disabled','budget-exhausted'].includes(s.status)?s.status:'unavailable',reason:['no_match','timeout','rate_limited','upstream_error','not_configured','budget_exhausted','policy_restricted'].includes(s.reason)?s.reason:null,...(Number.isFinite(s.durationMs)?{durationMs:Math.max(0,s.durationMs)}:{}),...(Number.isSafeInteger(s.documentCount)?{documentCount:Math.max(0,s.documentCount)}:{})}));
+  return {event:p.event,requestId:p.requestId,placeId:p.placeId,outcome:p.outcome,durationMs:p.durationMs,statuses};
+ }
+ if(p.event!=='waystory_provider_error'||!['ai','speech','unknown'].includes(p.service)||!(/^[a-f0-9-]{36}$/.test(p.requestId))||!(p.status===null||Number.isInteger(p.status)&&p.status>=100&&p.status<=599)||!Number.isFinite(p.durationMs)||p.durationMs<0)return null;
  return {event:p.event,service:p.service,status:p.status,durationMs:p.durationMs,requestId:p.requestId};
  }catch{return null}
 }
+

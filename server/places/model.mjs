@@ -1,8 +1,8 @@
-const langs=['ru','en','tr'];
+import {validEdition} from '../sources/languages.mjs';
 const string=(v,max=300)=>typeof v==='string'&&v.trim().length>0&&v.length<=max;
 export function refKey(ref){
  if(ref?.provider==='wikidata'&&/^Q[1-9]\d*$/.test(ref.id))return 'wd:'+ref.id;
- if(ref?.provider==='wikipedia'&&langs.includes(ref.language)&&Number.isSafeInteger(ref.pageId)&&ref.pageId>0)return `wiki:${ref.language}:${ref.pageId}`;
+ if(ref?.provider==='wikipedia'&&validEdition(ref.language)&&Number.isSafeInteger(ref.pageId)&&ref.pageId>0)return `wiki:${ref.language}:${ref.pageId}`;
  if(ref?.provider==='osm'&&['node','way','relation'].includes(ref.kind)&&Number.isSafeInteger(ref.id)&&ref.id>0)return `osm:${ref.kind}:${ref.id}`;
  throw new Error('Invalid place reference');
 }

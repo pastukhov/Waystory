@@ -5,6 +5,7 @@ export async function requestGuide(payload,{signal,fetchFn=fetch}={}){
   if(error.name==='AbortError')throw error;
   throw new Error(response.status===413?'Фото слишком большое для сервера. Попробуйте уменьшить его.':'Сервер вернул неожиданный ответ. Попробуйте позже.');
  }
- if(!response.ok)throw Object.assign(new Error(data.error||'Не удалось получить ответ.'),{status:response.status});
+ if(!response.ok)throw Object.assign(new Error(data.error||'Не удалось получить ответ.'),{status:response.status,code:data.code,retryable:data.retryable,diagnosticId:data.diagnosticId});
  return data;
 }
+

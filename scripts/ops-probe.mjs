@@ -16,6 +16,7 @@ async function probe(name,url,options){
 }
 if(mode==='diagnose'){
  const base='http://127.0.0.1:5173';
+ report({probe:'global-source-settings',enabled:env.GLOBAL_SOURCE_DISCOVERY_ENABLED==='true',keyConfigured:!!env.TAVILY_API_KEY,positiveBudget:Number(env.WEB_SEARCH_MAX_CALLS_PER_DAY||0)>0,policyConfigured:!!env.GLOBAL_WEB_USE_POLICY_JSON});
  report({probe:'source-settings',multisource:env.MULTISOURCE_ENABLED!=='false',webRequested:env.WEB_ENRICHMENT_ENABLED==='true',webKeyConfigured:!!env.TAVILY_API_KEY});
  try{const {DatabaseSync}=await import('node:sqlite');const db=new DatabaseSync(env.SOURCE_DB_PATH||'data/sources.sqlite',{readOnly:true});try{const cache=db.prepare('SELECT COUNT(*) AS entries,COALESCE(SUM(doc_count),0) AS documents,COALESCE(SUM(bytes),0) AS bytes FROM source_documents').get();const used=db.prepare('SELECT calls FROM provider_budget WHERE provider=? AND day=?').get('tavily',new Date().toISOString().slice(0,10))?.calls||0;report({probe:'source-catalog',places:db.prepare('SELECT COUNT(*) AS n FROM places').get().n,cache,webBudgetRemaining:Math.max(0,Number(env.WEB_SEARCH_MAX_CALLS_PER_DAY||0)-used)})}finally{db.close()}}catch{report({probe:'source-catalog',status:'not_initialized'})}
  try{
