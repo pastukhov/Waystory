@@ -30,13 +30,13 @@ test('duration labels distinguish seconds and cumulative minutes',()=>{
 });
 
 test('narration requires a known matching story language, independent of translated card names',()=>{
- const source={lang:'de',cardLanguage:'ru',source:'https://de.wikipedia.org/wiki/Test'};
+ const source={blocks:[{id:'s',depth:0,title:'Fact',text:'Fact'}],lang:'de',cardLanguage:'ru',source:'https://de.wikipedia.org/wiki/Test'};
  assert.equal(sourceLanguage(source),'de');
  assert.equal(canListen(source,'ru'),false);
  assert.equal(canListen({...source,aiGenerated:true,storyLanguage:'ru'},'ru'),true);
  assert.equal(canListen({...source,aiGenerated:true,storyLanguage:'en'},'ru'),false);
  assert.equal(canListen({aiGenerated:true,lang:'ru'},'ru'),false);
- assert.equal(canListen({source:'https://ru.wikipedia.org/wiki/Test'},'ru'),true);
+ assert.equal(canListen({blocks:source.blocks,source:'https://ru.wikipedia.org/wiki/Test'},'ru'),true);
  assert.equal(canListen({},'en'),false);
 });
 

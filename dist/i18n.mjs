@@ -2,6 +2,30 @@ import {LANGUAGE} from './language.mjs';
 
 // Explicit UI catalog: Russian source keys, English equivalents.
 export const messages={
+"Источники":"Sources",
+"Региональный контекст":"Regional context",
+"Об этом месте":"About this place",
+"Опубликовано:":"Published:",
+"Обновлено:":"Updated:",
+"Проверено:":"Checked:",
+"Лицензия":"License",
+"Текст и аудио — переработка источников:":"Text and audio adapted from sources:",
+"Материалы о месте":"Place sources",
+"Местное название:":"Local name:",
+"Координаты источников расходятся. Ищите место по названию.":"Sources disagree on coordinates. Search by name.",
+"Точка обозначает центр объекта, не вход.":"This point marks the centre, not the entrance.",
+"Обновить рассказ по источникам":"Update story from sources",
+"Повторить поиск материалов":"Retry finding materials",
+"Рассказ создан ИИ по указанным источникам. Проверьте важные детали.":"AI story based on the listed sources. Check important details.",
+"Сохранённый рассказ. Источники ещё не перепроверены.":"Saved story. Sources have not been rechecked.",
+"» в источниках…":"” in sources…",
+"В доступных источниках в радиусе 10 км мест не найдено. Попробуйте поиск по названию или сфотографируйте объект.":"No places found in available sources within 10 km. Search by name or take a photo.",
+"Недостаточно источников для рассказа об этом месте.":"Not enough sources to tell a story about this place.",
+"Источники рассказа временно недоступны.":"Story sources are temporarily unavailable.",
+"Источники мест временно недоступны.":"Place sources are temporarily unavailable.",
+"Источник места временно недоступен.":"This place source is temporarily unavailable.",
+"Место не найдено. Повторите поиск.":"Place not found. Please search again.",
+"Поиск сейчас занят. Повторите через минуту.":"Search is busy. Please try again in a minute.",
 "Маршрут в Google Maps":"Directions in Google Maps",
 "Найти в Google Maps":"Search Google Maps",
 "Облачная озвучка недоступна. Используется голос устройства.":"Cloud narration is unavailable. Using your device voice.",
@@ -266,7 +290,7 @@ export function durationLabel(blocks,depth,language=LANGUAGE){
 export function availableDepths(blocks){return [0,1,2].filter(depth=>blocks.some(b=>b.depth===depth))}
 export function clampDepth(blocks,depth){const available=availableDepths(blocks);return available.includes(depth)?depth:(available.filter(d=>d<=depth).at(-1)??available[0]??0)}
 export function sourceLanguage(place){return place.aiGenerated?place.storyLanguage:place.lang||(/^https:\/\/([a-z]+)\.wikipedia\.org/.exec(place.source||'')?.[1])||(place.demo?'ru':null)}
-export function canListen(place,language=LANGUAGE){return sourceLanguage(place)===language}
+export function canListen(place,language=LANGUAGE){return !!place.blocks?.length&&sourceLanguage(place)===language}
 export function safeError(error,fallback){return t(messages[error?.message?.trim()]?error.message:fallback)}
 
 export function speechError(message,language=LANGUAGE){
