@@ -8,7 +8,7 @@ on:
         required: true
         default: diagnose
         type: choice
-        options: [diagnose, speech-test, ai-test, restart, rollback]
+        options: [diagnose, speech-test, speech-format-test, ai-test, restart, rollback]
   workflow_run:
     workflows: [Deploy]
     types: [completed]
