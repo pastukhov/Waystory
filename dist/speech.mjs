@@ -6,7 +6,7 @@ export class Narrator {
   setState(state){this.state=state;this.onState(state)}
   stop(){this.epoch++;this.synth?.cancel();this.queue=[];this.setState('idle')}
   play(blocks){
-    this.stop();this.queue=[...blocks];
+    this.stop();this.queue=blocks.filter(block=>normalizeSpeechText(block.text));
     if(!this.queue.length){this.setState('finished');return}
     if(!this.synth||!this.Utterance){this.onError('Озвучка недоступна в этом браузере. Вы можете читать текст рассказа.');return}
     const token=this.epoch;
@@ -73,3 +73,4 @@ export class CloudNarrator extends Narrator {
  pause(){if(this.local)return this.local.pause();if(!this.cloud)return super.pause();if(['playing','loading'].includes(this.state)){this.audio.pause();this.setState('paused')}}
  resume(){if(this.localPending){this.startLocal(this.localPending);return}if(this.local)return this.local.resume();if(!this.cloud)return super.resume();if(this.state==='paused'){if(this.ready)this.startAudio(this.epoch);else this.setState('loading')}}
 }
+
