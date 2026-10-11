@@ -35,9 +35,10 @@ jobs:
           npm run check
           npm test
           bash tests/image-state.test.sh
-          for file in dist/*.mjs server/*.mjs scripts/*.mjs tests/*.mjs; do
+          for file in dist/*.mjs scripts/*.mjs tests/*.mjs; do
             node --check "$file"
           done
+          while IFS= read -r file; do node --check "$file"; done < <(find server -name '*.mjs' -type f)
           for file in scripts/*.sh; do bash -n "$file"; done
           python3 -m py_compile scripts/import-yandex-settings.py
           python3 tests/import-settings.test.py

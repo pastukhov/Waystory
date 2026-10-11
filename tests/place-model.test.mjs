@@ -7,3 +7,4 @@ test('ref validation rejects injection and non-positive identifiers',()=>{assert
 
 test('OSM nodes and relations stay distinct without references',()=>{assert.equal(mergePlaces([p('osm:node:7','Q7'),p('osm:relation:7','Q8')]).length,2)});
 test('enrichment keeps populated administrative references',()=>{const [merged]=mergePlaces([{...p('wd:Q1','Q1'),areaRefs:[]},{...p('osm:node:2','Q1'),areaRefs:[{provider:'wikidata',id:'Q2'}]}]);assert.equal(merged.areaRefs[0].id,'Q2')});
+test('a coincident mapped polygon stays a centroid when linked to Wikipedia',()=>{const a=p('wiki:en:1','Q1');const b={...p('osm:way:2','Q1'),coordinates:{lat:36,lon:32,kind:'centroid',sourceId:'osm:way:2'}};assert.equal(mergePlaces([a,b])[0].coordinates.kind,'centroid')});

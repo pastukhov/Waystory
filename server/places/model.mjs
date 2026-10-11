@@ -21,10 +21,12 @@ export function normalizePlace(raw){
 }
 function meters(a,b){const r=Math.PI/180,x=Math.sin((b.lat-a.lat)*r/2)**2+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin((b.lon-a.lon)*r/2)**2;return 12742000*Math.atan2(Math.sqrt(Math.min(1,x)),Math.sqrt(Math.max(0,1-x)))}
 function combine(a,b){
- const coordinates=a.coordinates||b.coordinates;
+ let coordinates=a.coordinates||b.coordinates;
+ // A linked geometry centre is not an entrance, even when another provider calls it a point.
+ if(a.coordinates&&b.coordinates&&meters(a.coordinates,b.coordinates)<=250){const centre=[a.coordinates,b.coordinates].find(c=>c.kind==='centroid');if(centre)coordinates=centre}
  const conflict=[...(a.coordinateConflict||[]),...(b.coordinateConflict||[])];
  if(a.coordinates&&b.coordinates&&meters(a.coordinates,b.coordinates)>250)conflict.push(a.coordinates,b.coordinates);
- return {...a,refs:[...new Map([...a.refs,...b.refs].map(r=>[refKey(r),r])).values()],names:{...b.names,...a.names},coordinates,sourceIds:[...new Set([...a.sourceIds,...b.sourceIds])],...(b.areaRefs||a.areaRefs?{areaRefs:[...new Map([...(a.areaRefs||[]),...(b.areaRefs||[])].map(r=>[refKey(r),r])).values()].slice(0,2)}:{}),...(conflict.length?{coordinateConflict:[...new Map(conflict.map(c=>[JSON.stringify(c),c])).values()].slice(0,8)}:{})};
+ return {...a,category:a.category==='place'?b.category:a.category,refs:[...new Map([...a.refs,...b.refs].map(r=>[refKey(r),r])).values()],names:{...b.names,...a.names},coordinates,sourceIds:[...new Set([...a.sourceIds,...b.sourceIds])],...(b.areaRefs||a.areaRefs?{areaRefs:[...new Map([...(a.areaRefs||[]),...(b.areaRefs||[])].map(r=>[refKey(r),r])).values()].slice(0,2)}:{}),...(conflict.length?{coordinateConflict:[...new Map(conflict.map(c=>[JSON.stringify(c),c])).values()].slice(0,8)}:{})};
 }
 export function mergePlaces(records){
  const groups=[];

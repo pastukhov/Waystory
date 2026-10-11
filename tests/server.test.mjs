@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createApp } from '../server/index.mjs';
 // Exercise the real request handler without binding a network socket.
 function request(url,options={}){return new Promise((resolve,reject)=>{
- const headers=new Map();let status=200;const server=createApp();
+ const headers=new Map();let status=200;const server=createApp({authDbPath:':memory:',sourceDbPath:':memory:'});
  const req={url,method:options.method||'GET',headers:{host:'localhost',...(options.headers||{})}};
  const res={setHeader:(k,v)=>headers.set(k.toLowerCase(),v),writeHead:(s,h)=>{status=s;for(const [k,v] of Object.entries(h))headers.set(k.toLowerCase(),v)},end:body=>resolve({status,headers,text:String(body||'')})};
  Promise.resolve(server.listeners('request')[0](req,res)).catch(reject);

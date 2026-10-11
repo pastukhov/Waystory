@@ -30,3 +30,10 @@ The deploy script maintains the current and previous verified healthy images ind
 ## Privacy and diagnostics
 
 Application error logging reconstructs a fixed schema: service (AI/speech), upstream HTTP status (null for transport failure), duration and a locally generated request ID. No body, model input, cookies or provider credentials are logged. Operations emits only records matching this schema, not raw Docker logs. Detailed upstream error bodies are available only for the fixed diagnostic probes, after credential redaction. Public API callers do not gain a diagnostics endpoint or a way to bypass authentication.
+
+Открытые источники: операция `sources-test` выполняет bounded-поиск в трёх фиксированных
+публичных точках, печатает число мест, имён, координат и задержки cold/cache. Ключи ИИ
+и web-поиск не используются. `web-source-test` отдельно и явно платный (до 2 search
+calls), выключен без ключа, бюджета и прав доменов. Diagnose выводит только флаги
+конфигурации, размеры кэша и остаток бюджета. Аргументы и URL от пользователя не принимаются.
+См. [sources.md](sources.md) для прав, качества и отката через `MULTISOURCE_ENABLED=false`.

@@ -6,25 +6,25 @@ A mobile-first city audio guide pilot. Explore a place, listen to its story, and
 
 ## Current status
 
-This is a **pilot with an optional Yandex AI Studio backend**. The interface, generated titles/stories/answers, speech and voice questions follow the first supported browser language (Russian or English; English fallback). Prepared examples retain their original Russian source text until AI translation.
+This is a **pilot with an optional Yandex AI Studio backend**. The interface, titles/stories/answers, speech and voice questions follow the first supported browser language (Russian or English; English fallback). Google sign-in is required for AI stories, questions, photos and speech; authenticated AI/TTS request counts are unlimited.
 
 Implemented:
 
-- Three prepared walking-guide examples from central Saint Petersburg.
-- Yandex SpeechKit MP3 playback with pause/resume and speech-rate control; device voice in demo mode.
+- Search-first home with no preselected city. Open-data POIs from OSM, Wikidata, Wikipedia and Wikivoyage.
+- Yandex SpeechKit MP3 playback with pause/resume and speech-rate control; automatic device voice fallback when cloud narration fails.
 - Cumulative short, standard, and detailed stories. Higher levels append connected new material; thin sources honestly expose fewer levels. Completed sections are not repeated when depth changes; an interrupted section restarts from its beginning.
 - AI follow-up questions with heard context and a return to the main story; prepared answers in demo mode.
-- Wikipedia search and nearby-place discovery through browser geolocation.
+- Server-side open-source search and nearby discovery, native/local names and Google Maps links.
 - Favorites and listening history stored on the current device.
 - Photo selection and recognition through a vision model when AI is configured.
 
 Set `YANDEX_API_KEY` and `YANDEX_FOLDER_ID` on the server to enable AI stories,
-questions, and photo recognition. Without credentials the app keeps demo mode.
+questions, and photo recognition. Without credentials AI is unavailable; open-data search remains available.
 The browser never receives provider credentials. See [Yandex setup](docs/YANDEX-AI.md)
 for model choices, limits, VM migration and live verification. Voice playback uses
 SpeechKit when configured; the key needs separate speech synthesis permissions.
 
-The Wikipedia integration, actual phone audio, GPS walking behavior, and background playback still need live device testing. Keep the app open during this pilot.
+Provider coverage, story factual accuracy, actual phone audio and background playback require live testing. Keep the app open during this pilot.
 
 ## Run locally
 
@@ -92,11 +92,13 @@ dist/                  Static app source, ready for hosting
   core.mjs             Story queue and storage helpers
   speech.mjs           Cancellable cloud/device speech playback
   wiki.mjs             Wikipedia search and article retrieval
-  data.mjs             Prepared sample stories
+  data.mjs             Legacy prepared sample stories
   art.mjs, assets/     Original stylized SVG illustrations
 server/index.mjs       Static server and bounded AI API
 server/guide.mjs       Yandex adapter, prompts, validation and story cache
-server/tts.mjs         SpeechKit synthesis, bounded MP3 cache and separate limits
+server/tts.mjs         SpeechKit synthesis and bounded MP3 cache
+server/places/        Source-aware place model, SQLite catalog and discovery
+server/sources/       Open providers, policies, collection, optional paid enrichment
 tests/                 Dependency-free Node tests
 scripts/standalone.mjs Single-file HTML packaging
 docs/PILOT.md          Scope and next steps
@@ -168,9 +170,13 @@ Signed-in invited users have unlimited request counts by default (`AUTHENTICATED
 [Operations workflow and runbook](docs/operations.md) provide diagnostics, small paid provider probes, restart and previous-image rollback through the existing GitHub Runner. An assistant can request these via `ops/request.json` in a PR; no manual SSH command is needed. Ordinary successful deployments run free diagnostics only.
 
 Каталог дополнительных источников хранится отдельно от аккаунтов (`SOURCE_DB_PATH`).
-На этапе внедрения `MULTISOURCE_ENABLED=false` сохраняет действующий поиск.
+Открытые источники включены по умолчанию; `MULTISOURCE_ENABLED=false` возвращает прежний поиск.
 Места объединяются только по общим идентификаторам. Старые Wikipedia IDs сохраняются
 как aliases; противоречащие координаты сохраняются для проверки.
 Wikidata: CC0; OSM: ODbL, только метаданные. Тексты Wikimedia и производные рассказы
 и аудио требуют атрибуции и CC BY-SA 4.0. Права на изображения проверяются отдельно.
 Неизвестная лицензия запрещает передачу текста модели и кэширование текста.
+
+Открытые POI и материалы: OSM, Wikidata, Wikipedia, Wikivoyage. Источники, местные
+названия, лицензии и даты отображаются в карточке. Не для всех объектов есть рассказ.
+См. [документацию источников](docs/sources.md). Платный поиск выключен до ключей и прав.

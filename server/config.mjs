@@ -14,4 +14,4 @@ export function serverAddress(env=process.env) {
   return {host:env.HOST||'127.0.0.1',port:Number(value)};
 }
 
-export function sourceSettings(env=process.env){return {enabled:env.MULTISOURCE_ENABLED==='true',dbPath:env.SOURCE_DB_PATH||'data/sources.sqlite',osmEndpoint:env.OSM_OVERPASS_ENDPOINT||'https://overpass-api.de/api/interpreter'}}
+export function sourceSettings(env=process.env){return {enabled:env.MULTISOURCE_ENABLED!=='false',dbPath:env.SOURCE_DB_PATH||'data/sources.sqlite',osmEndpoint:env.OSM_OVERPASS_ENDPOINT||'https://overpass-api.de/api/interpreter'}}

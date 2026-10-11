@@ -6,7 +6,7 @@ export function publicSource(d){const {text,sitelinks,website,wikipediaTitle,...
 export function createPlaces({store,providers,now=Date.now,enrichment}={}){
  const open=providers.filter(p=>['wikipedia','osm','wikidata','wikivoyage'].includes(p.id)),cache=new Map();let minute=now(),calls=0,active=0;
  function language(l){if(!['ru','en'].includes(l))throw bad()}
- function save(results){const documents=results.flatMap(r=>r.documents||[]),places=mergePlaces(results.flatMap(r=>r.places||[])).map(p=>store.upsert(p));return {places:places.slice(0,30),sources:[...new Map(documents.map(d=>[d.id,publicSource(d)])).values()]}}
+ function save(results){const documents=results.flatMap(r=>r.documents||[]),places=mergePlaces(results.flatMap(r=>r.places||[])).map(p=>store.upsert(p));return {places,sources:[...new Map(documents.map(d=>[d.id,publicSource(d)])).values()]}}
  async function hydrate(results,signal){
   const wiki=open.find(p=>p.id==='wikipedia');if(!wiki?.resolveTitle)return;
   const links=[];for(const r of results)for(const doc of r.documents||[]){
@@ -21,7 +21,7 @@ export function createPlaces({store,providers,now=Date.now,enrichment}={}){
   const signal=input.signal?AbortSignal.any([input.signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000);
   try{const selected=open.filter(p=>p[method]);const out=await Promise.allSettled(selected.map(p=>p[method]({...input,signal})));input.signal?.throwIfAborted();const statuses=selected.map((p,i)=>({provider:p.id,status:out[i].status==='fulfilled'?out[i].value.status||'ok':'unavailable'}));const good=out.filter(r=>r.status==='fulfilled').map(r=>r.value);if(!good.length)throw new GuideError(503,'Источники мест временно недоступны.');
    const ids=[...new Set(good.flatMap(r=>r.places||[]).flatMap(p=>p.refs.filter(r=>r.provider==='wikidata').map(r=>r.id)))].slice(0,30),wd=open.find(p=>p.id==='wikidata');if(ids.length&&wd?.entities){try{good.push(await wd.entities(ids,{signal}));statuses.push({provider:'wikidata',status:'ok'})}catch{statuses.push({provider:'wikidata',status:'unavailable'})}}
-   await hydrate(good,signal);const value={...save(good),statuses};if(method==='search'){value.places=mergePlaces([...value.places,...store.search(input.q)]).slice(0,30)}if(!statuses.some(s=>s.status==='unavailable')){if(cache.size>=100)cache.delete(cache.keys().next().value);cache.set(key,{time:now(),value})}return value;
+   await hydrate(good,signal);const value={...save(good),statuses};if(method==='search'){value.places=mergePlaces([...value.places,...store.search(input.q)])}else{const distance=p=>{const c=p.coordinateConflict?.length?null:p.coordinates;if(!c)return Infinity;const r=Math.PI/180,x=Math.sin((c.lat-input.lat)*r/2)**2+Math.cos(input.lat*r)*Math.cos(c.lat*r)*Math.sin((c.lon-input.lon)*r/2)**2;return 12742000*Math.atan2(Math.sqrt(Math.min(1,x)),Math.sqrt(Math.max(0,1-x)))};value.places.sort((a,b)=>distance(a)-distance(b))}value.places=value.places.slice(0,30);if(!statuses.some(s=>s.status==='unavailable')){if(cache.size>=100)cache.delete(cache.keys().next().value);cache.set(key,{time:now(),value})}return value;
   }finally{active--}
  }
  const collector=createCollector({providers:[...open,...(enrichment?[enrichment]:[])],cache:store.db?createSourceCache({db:store.db,now}):null});
