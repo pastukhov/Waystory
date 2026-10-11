@@ -1,9 +1,10 @@
 # Operations without SSH
 
-The **Operations** workflow runs on the existing Waystory self-hosted runner. It accepts only five operations; no arbitrary shell commands, paths or secrets are accepted as workflow inputs.
+The **Operations** workflow runs on the existing Waystory self-hosted runner. It accepts only six operations; no arbitrary shell commands, paths or secrets are accepted as workflow inputs.
 
 - `diagnose`: container status/image/restart count, recent allowlisted provider error records, Google setup availability, anonymous session and denied paid endpoints. No paid calls.
 - `speech-test`: two short fixed synthesis requests, Russian and English. Reports upstream status/duration and redacted error response. Does not submit user stories, store audio or print credentials. These two calls can incur provider charges.
+- `speech-format-test`: two fixed Russian probes (Filipp/OggOpus and Marina/MP3) to isolate format/voice failures. These calls can incur provider charges.
 - `ai-test`: one fixed short prompt, maximum 32 output tokens. No user text; provider charges can apply.
 - `restart`: recreate the current image with the current server dotenv file, then diagnose.
 - `rollback`: recreate the previously healthy locally available `waystory:<commit>` image, then diagnose. Persistent data is kept. This changes the image, not the environment file or schema; use only when the older image is compatible with current data. A later deployment of main will replace it again.

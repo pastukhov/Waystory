@@ -28,6 +28,8 @@ export function createSpeech({env=process.env,fetchFn=fetch,now=Date.now}={}){
    const response=await fetchFn('https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize',{method:'POST',headers:{Authorization:'Api-Key '+key,'Content-Type':'application/x-www-form-urlencoded','x-data-logging-enabled':'false'},body,signal:AbortSignal.any([AbortSignal.timeout(30000),...(signal?[signal]:[])])});
    providerStatus=response.status;
    if(response.status===401||response.status===403)throw new GuideError(503,'Нет доступа к SpeechKit. Проверьте роль ai.speechkit-tts.user и разрешение API-ключа на синтез речи.');
+   if(response.status===429)throw new GuideError(429,'SpeechKit: достигнут лимит сервиса Yandex. Попробуйте позже.');
+   if(response.status>=500)throw new GuideError(502,'Сервис озвучки Yandex вернул внутреннюю ошибку. Попробуйте позже.');
    if(!response.ok)throw new GuideError(502,'SpeechKit временно недоступен. Попробуйте позже.');
    const chunks=[];let size=0;
    for await(const chunk of response.body){size+=chunk.length;if(size>4*1024*1024)throw new GuideError(502,'Слишком большой ответ озвучки.');chunks.push(Buffer.from(chunk))}

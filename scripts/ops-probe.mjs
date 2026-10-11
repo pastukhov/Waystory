@@ -25,6 +25,11 @@ if(mode==='diagnose'){
    await probe('speech-'+lang,'https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize',{method:'POST',headers:{Authorization:'Api-Key '+key,'Content-Type':'application/x-www-form-urlencoded','x-data-logging-enabled':'false'},body:new URLSearchParams({text,voice,lang,format:'mp3',speed:'1.0'}).toString()});
   }
  }
+}else if(mode==='speech-format-test'){
+ const key=env.YANDEX_TTS_API_KEY||env.YANDEX_API_KEY;
+ if(!key){report({probe:'speech',error:'not_configured'});process.exitCode=1}else{
+  for(const [format,voice] of [['oggopus','filipp'],['mp3','marina']])await probe('speech-ru-'+format+'-'+voice,'https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize',{method:'POST',headers:{Authorization:'Api-Key '+key,'Content-Type':'application/x-www-form-urlencoded','x-data-logging-enabled':'false'},body:new URLSearchParams({text:'Проверка голоса.',voice,lang:'ru-RU',format,speed:'1.0'}).toString()});
+ }
 }else if(mode==='ai-test'){
  const key=env.YANDEX_API_KEY,folder=env.YANDEX_FOLDER_ID;
  if(!key||!folder){report({probe:'ai',error:'not_configured'});process.exitCode=1}else{
