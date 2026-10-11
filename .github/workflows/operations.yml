@@ -8,7 +8,7 @@ on:
         required: true
         default: diagnose
         type: choice
-        options: [diagnose, sources-test, web-source-test, speech-test, speech-format-test, ai-test, restart, rollback]
+        options: [diagnose, sources-test, web-source-test, global-source-test, speech-test, speech-format-test, ai-test, restart, rollback]
   workflow_run:
     workflows: [Deploy]
     types: [completed]
@@ -63,3 +63,4 @@ jobs:
             export WAYSTORY_EXPECT_REVISION="$(git rev-parse HEAD)"
           fi
           bash scripts/operations-vm.sh "$operation" "$request_id"
+

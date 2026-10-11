@@ -30,4 +30,7 @@ jobs:
       - name: Deploy the tested main commit
         env:
           WAYSTORY_REQUIRE_MAIN: 'true'
+          WAYSTORY_TAVILY_SECRET: ${{ secrets.TAVILY_API_KEY }}
+          WAYSTORY_SYNC_SEARCH_SETTINGS: 'true'
         run: bash scripts/deploy-vm.sh
+

@@ -21,6 +21,10 @@ env_file="${WAYSTORY_ENV_FILE:-/opt/waystory/.env}"
 proxy_network="${WAYSTORY_PROXY_NETWORK:-dogovorovoi_default}"
 test -r "$env_file" || { echo "Missing readable environment file: $env_file" >&2; exit 1; }
 "${docker_cmd[@]}" network inspect "$proxy_network" >/dev/null
+if [ "${WAYSTORY_SYNC_SEARCH_SETTINGS:-false}" = true ]; then
+  python3 scripts/sync-deploy-settings.py "$env_file"
+fi
+unset WAYSTORY_TAVILY_SECRET
 
 # Pass interpolation settings explicitly through sudo without exposing secrets.
 # This file contains paths and an image tag only, no credentials.
@@ -60,3 +64,4 @@ for(const path of ['/api/guide','/api/speech']){
 JS
 
 record_healthy_image /opt/waystory/operations "waystory:$revision"
+
