@@ -27,17 +27,17 @@ async function readJson(req){
 }
 export function createApp(options={}){
  const settings=sourceSettings(options.env||process.env);
- const store=options.placeStore||((settings.enabled||options.env?.YANDEX_API_KEY||process.env.YANDEX_API_KEY)?createPlaceStore({dbPath:options.sourceDbPath||settings.dbPath}):null);
- const sourceRequest=store?createSourceHttp({fetchFn:options.sourceFetchFn,osmEndpoint:settings.osmEndpoint}):null;
+ const store=options.placeStore||(settings.enabled?createPlaceStore({dbPath:options.sourceDbPath||settings.dbPath}):null);
+ const sourceRequest=settings.enabled?createSourceHttp({fetchFn:options.sourceFetchFn,osmEndpoint:settings.osmEndpoint}):null;
  const wikidata=sourceRequest?createWikidataProvider({request:sourceRequest}):null;
  const places=options.places||(store?createPlaces({store,providers:options.sourceProviders||[createWikipediaProvider({request:sourceRequest}),createOsmProvider({request:sourceRequest,endpoint:settings.osmEndpoint}),wikidata,createWikivoyageProvider({request:sourceRequest,wikidata})]}):null);
- const guide=createGuide({...options,collectSources:options.collectSources||(places?async(id,o)=>{const p=store.getById(id);if(!p)throw new GuideError(404,'Место не найдено. Повторите поиск.');return places.collect(p,o)}:undefined),resolveLegacy:options.resolveLegacy||(places?async(ref,o)=>{if(ref.title){const wiki=places.providers.find(p=>p.id==='wikipedia');const r=await wiki.resolveTitle(ref.title,ref.language,o);if(!r.places?.length)throw new GuideError(404,'Место не найдено.');return store.upsert(r.places[0]).id}return (await places.resolve(ref,o)).place.id}:undefined)}),speech=createSpeech(options),auth=options.auth||createAuth({env:options.env,fetchFn:options.authFetchFn,dbPath:options.authDbPath});const server=http.createServer(async(req,res)=>{
+ const guide=createGuide(options),speech=createSpeech(options),auth=options.auth||createAuth({env:options.env,fetchFn:options.authFetchFn,dbPath:options.authDbPath});const server=http.createServer(async(req,res)=>{
  const json=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data))};
  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: https://upload.wikimedia.org; media-src 'self' blob:; connect-src 'self' https://ru.wikipedia.org https://en.wikipedia.org https://tr.wikipedia.org; object-src 'none'; base-uri 'self'");
  let pathname;try{pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname)}catch{return json(400,{error:'Неверный адрес.'})}
  const redirect=(location,cookies)=>{res.writeHead(303,{'Location':location,'Cache-Control':'no-store','Referrer-Policy':'no-referrer',...(cookies?{'Set-Cookie':cookies}:{})});res.end()};
  if(pathname.startsWith('/api/places/')){
-  if(!settings.enabled||!places)return json(503,{error:'Поиск по дополнительным источникам пока выключен.'});
+  if(!places)return json(503,{error:'Поиск по дополнительным источникам пока выключен.'});
   const controller=new AbortController();req.once?.('aborted',()=>controller.abort());res.once?.('close',()=>{if(!res.writableEnded)controller.abort()});
   try{
    const url=new URL(req.url,'http://localhost'),language=url.searchParams.get('language')||'ru';
@@ -73,8 +73,8 @@ export function createApp(options={}){
  }
  let user=null;
  try{if(['/api/config','/api/guide','/api/speech'].includes(pathname))user=auth.session(req.headers.cookie)}catch{return json(503,{error:'Вход временно недоступен.'})}
- if(pathname==='/api/config'&&!user)return json(200,{ai:false,mode:'demo',multisource:settings.enabled&&!!places});
- if(pathname==='/api/config')return json(200,guide.enabled?{ai:true,mode:'live',multisource:settings.enabled&&!!places,vision:true,tts:speech.enabled}:{ai:false,mode:'demo',multisource:settings.enabled&&!!places,...(speech.enabled?{tts:true}:{})});
+ if(pathname==='/api/config'&&!user)return json(200,{ai:false,mode:'demo',multisource:!!places});
+ if(pathname==='/api/config')return json(200,guide.enabled?{ai:true,mode:'live',multisource:!!places,vision:true,tts:speech.enabled}:{ai:false,mode:'demo',multisource:!!places,...(speech.enabled?{tts:true}:{})});
  if(pathname==='/api/guide'||pathname==='/api/speech'){
   if(!auth.origin&&req.headers.origin){try{if(new URL(req.headers.origin).host!==req.headers.host)return json(403,{error:'Запрос с другого сайта запрещён.'})}catch{return json(403,{error:'Неверный источник.'})}}
   if(req.method!=='POST')return json(405,{error:'Метод не поддерживается.'});
