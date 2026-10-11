@@ -69,7 +69,7 @@ async function loadAccount(){
  try{const r=await fetch('/api/session',{signal:controller.signal});if(!r.ok)throw new Error();const data=await r.json();renderAccount(data);return data}
  catch{state.user=null;state.authEnabled=false;$('google-login').hidden=true;$('account-status').textContent=t('Не удалось загрузить аккаунт. Повторите попытку.');return null}finally{clearTimeout(timer)}
 }
-$('account-open').onclick=()=>{openDialog('account-dialog');loadAccount()};
+$('account-open').onclick=()=>{openDialog('account-dialog');config()};
 $('account-logout').onclick=async()=>{
  $('account-logout').disabled=true;
  try{const r=await fetch('/auth/logout',{method:'POST'});if(!r.ok)throw new Error();narrator.stop();location.reload()}
