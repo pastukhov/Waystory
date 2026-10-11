@@ -36,7 +36,7 @@ compose config --quiet
 source scripts/image-state.sh
 previous_image="$("${docker_cmd[@]}" inspect waystory-waystory-1 --format '{{.Config.Image}}' 2>/dev/null || true)"
 previous_health="$("${docker_cmd[@]}" inspect waystory-waystory-1 --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
-if [[ "$previous_health" == healthy && "$previous_image" =~ ^waystory:[a-f0-9]{40}$ ]]; then
+if [[ ! -e /opt/waystory/operations/current-image && "$previous_health" == healthy && "$previous_image" =~ ^waystory:[a-f0-9]{40}$ ]]; then
   record_healthy_image /opt/waystory/operations "$previous_image"
 fi
 compose build --pull
