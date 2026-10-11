@@ -23,16 +23,22 @@ if(mode==='diagnose'){
   for(const path of ['/api/guide','/api/speech']){const r=await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(5000)});report({probe:path,status:r.status,anonymousDenied:r.status===(s.enabled?401:503)});if(r.status!==(s.enabled?401:503))process.exitCode=1;await r.body?.cancel()}
  }catch{report({probe:'application',error:'unreachable'});process.exitCode=1}
 }else if(mode==='sources-test'){
- const base='http://127.0.0.1:5173';
- for(const scenario of [{name:'Alanya tower',lat:36.536,lon:31.999},{name:'Alanya sparse coverage',lat:36.566,lon:31.982},{name:'Paris',lat:48.858,lon:2.294}]){
-  const url=base+'/api/places/nearby?'+new URLSearchParams({lat:scenario.lat,lon:scenario.lon,radius:1500,language:'ru'}),start=Date.now();
-  try{const r=await fetch(url,{signal:AbortSignal.timeout(25000)}),data=await r.json();const coldMs=Date.now()-start;
-   if(!r.ok){report({probe:'sources-test',scenario:scenario.name,status:r.status});process.exitCode=1;continue}
-   const cachedStart=Date.now(),second=await fetch(url,{signal:AbortSignal.timeout(25000)}),repeated=await second.json(),repeatMs=Date.now()-cachedStart;const places=data.places||[],repeatPlaces=repeated.places||[];const sameIds=JSON.stringify(places.map(p=>p.id).sort())===JSON.stringify(repeatPlaces.map(p=>p.id).sort()),cacheEligible=!(data.statuses||[]).some(s=>s.status==='unavailable');const repeatOk=second.ok&&repeatPlaces.length>0&&sameIds;if(!repeatOk)process.exitCode=1;
-   report({probe:'sources-test',scenario:scenario.name,status:r.status,found:places.length,coldMs,repeatMs,repeatStatus:second.status,repeatSameIds:sameIds,cacheEligible,...(repeatOk&&cacheEligible?{cachedMs:repeatMs}:{}),nativeNames:places.filter(p=>p.names.native).length,coordinates:places.filter(p=>p.coordinates&&!p.coordinateConflict?.length).length,conflicts:places.filter(p=>p.coordinateConflict?.length).length,statuses:data.statuses,sample:places.slice(0,10).map(p=>({id:p.id,original:p.names.original,native:p.names.native?.text||null,refs:p.refs,coordinateKind:p.coordinates?.kind||null})),paidCalls:0});
-   if(!places.length||new Set(places.map(p=>p.id)).size!==places.length)process.exitCode=1;
-  }catch{report({probe:'sources-test',scenario:scenario.name,error:'unavailable'});process.exitCode=1}
- }
+ const module=path=>import(new URL(path,'file://'+process.cwd()+'/'));
+ const {runSourcesProbe}=await module('./server/sources/probe.mjs');
+ const {createPlaceStore}=await module('./server/places/store.mjs');
+ const {createPlaces}=await module('./server/places/service.mjs');
+ const {createSourceHttp}=await module('./server/sources/http.mjs');
+ const {createWikipediaProvider}=await module('./server/sources/wikipedia.mjs');
+ const {createOsmProvider}=await module('./server/sources/osm.mjs');
+ const {createWikidataProvider}=await module('./server/sources/wikidata.mjs');
+ const {createWikivoyageProvider}=await module('./server/sources/wikivoyage.mjs');
+ const endpoint=env.OSM_OVERPASS_ENDPOINT||'https://overpass-api.de/api/interpreter';
+ const store=createPlaceStore({dbPath:env.SOURCE_DB_PATH||'data/sources.sqlite'});
+ try{
+  const request=createSourceHttp({osmEndpoint:endpoint}),wikidata=createWikidataProvider({request});
+  const places=createPlaces({store,providers:[createWikipediaProvider({request}),createOsmProvider({request,endpoint}),wikidata,createWikivoyageProvider({request,wikidata})]});
+  if(!await runSourcesProbe({collect:(place,options)=>places.collect(store.getById(place.id)||place,options),report}))process.exitCode=1;
+ }finally{store.close()}
 }else if(mode==='web-source-test'){
  const {createPlaceStore}=await import(new URL('./server/places/store.mjs','file://'+process.cwd()+'/'));
  const {createWebEnrichment}=await import(new URL('./server/sources/tavily.mjs','file://'+process.cwd()+'/'));
@@ -74,3 +80,4 @@ if(mode==='diagnose'){
   }catch(error){report({probe:'ai-story',valid:false,status:error.status||null,error:clean(error.message),durationMs:Date.now()-start});process.exitCode=1}
  }
 }else{report({error:'unsupported_operation'});process.exitCode=1}
+

@@ -96,13 +96,14 @@ const narrator=new CloudNarrator({
 narrator.language=LANGUAGE;
 function updateProgress(){const all=state.selected?.blocks?.filter(b=>b.depth<=state.depth)||[];const count=all.filter(b=>state.heard.includes(b.id)).length;$('player-progress').style.width=(all.length?100*count/all.length:0)+'%';$('player-progress-label').textContent=count+t(' из ')+all.length+t(' фрагментов')}
 function renderStory(){
- const p=state.selected;if(!p)return;
- $('story-play').disabled=!canListen(p);$('story-restart').disabled=!canListen(p);$('story-save').disabled=false;$('question-panel').hidden=false;
+ const p=state.selected;if(!p)return;const hasStory=!!p.blocks?.some(b=>b.text?.trim());
+ document.querySelector('.depth-label').hidden=!hasStory;document.querySelector('.depth-switch').hidden=!hasStory;$('story-source-note').hidden=!hasStory;
+ $('story-play').disabled=!canListen(p);$('story-restart').disabled=!canListen(p);$('story-save').disabled=false;$('question-panel').hidden=!hasStory;
  $('story-original').textContent=localNameLabel(p,LANGUAGE)+(p.nativeName||originalPlaceName(p));$('story-original').hidden=(p.nativeName||originalPlaceName(p))===p.title;const map=placeMapAnchor(p);$('story-map').replaceChildren(...(map?[map]:[]));if(p.coordinateKind==='centroid'||p.coordinateConflict){const note=document.createElement('small');note.textContent=t(p.coordinateConflict?'Координаты источников расходятся. Ищите место по названию.':'Точка обозначает центр объекта, не вход.');$('story-map').append(note)}
- $('story-title').textContent=p.title;$('reopen-story').textContent=p.title;$('story-category').textContent=metadata(p.category)||t('История места');$('story-address').textContent=p.address&&(p.lang||(/https:\/\/([a-z]+)\.wikipedia\.org/.exec(p.source||'')?.[1]))===LANGUAGE?p.address:t(p.placeId?'Материалы о месте':'Материалы Википедии');$('story-kind').textContent=p.demo?t('ГОТОВАЯ ИСТОРИЯ · РЕЖИМ ЗНАКОМСТВА'):p.aiGenerated?t('ИИ-РАССКАЗ ПО ИСТОЧНИКУ'):t('ТЕКСТ ИЗ ВИКИПЕДИИ');
+ $('story-title').textContent=p.title;$('reopen-story').textContent=p.title;$('story-category').textContent=metadata(p.category)||t('История места');$('story-address').textContent=p.address&&(p.lang||(/https:\/\/([a-z]+)\.wikipedia\.org/.exec(p.source||'')?.[1]))===LANGUAGE?p.address:t(p.placeId?'Материалы о месте':'Материалы Википедии');$('story-kind').textContent=!hasStory?t('Материалы о месте'):p.demo?t('ГОТОВАЯ ИСТОРИЯ · РЕЖИМ ЗНАКОМСТВА'):p.aiGenerated?t('ИИ-РАССКАЗ ПО ИСТОЧНИКУ'):t('ТЕКСТ ИЗ ВИКИПЕДИИ');
  showArt($('story-art'),p);updateSaveButton();renderText();renderSources($('story-sources'),p.sources,p.outputLicense);$('story-enrich').hidden=!state.webEnrichment||!p.placeId;$('story-refresh').hidden=!state.ai&&!p.pageid;$('story-refresh').textContent=t(p.blocks?.length?'Обновить рассказ по источникам':'Повторить поиск материалов');
- $('story-detail-notice').hidden=!(p.detailLimited||availableDepths(p.blocks).length<3);$('story-detail-notice').textContent=ui('limited');
- $('story-language-notice').hidden=!p.blocks?.length||canListen(p);$('story-language-notice').textContent=ui('original')+' ('+(sourceLanguage(p)||ui('unknown'))+'). '+ui('noVoice');
+ $('story-detail-notice').hidden=!hasStory||!(p.detailLimited||availableDepths(p.blocks).length<3);$('story-detail-notice').textContent=ui('limited');
+ $('story-language-notice').hidden=!hasStory||canListen(p);$('story-language-notice').textContent=ui('original')+' ('+(sourceLanguage(p)||ui('unknown'))+'). '+ui('noVoice');
  const url=safeSourceUrl(p.source);$('story-source').hidden=!url;if(url)$('story-source').href=url;
  $('story-source').hidden=!!p.sources?.length||!url;$('story-source-note').textContent=p.demo?t('Подготовленный пример на основе статьи. Иллюстрация стилизована. Это не ответ ИИ в реальном времени.'):p.aiGenerated?t(p.storyVersion===3?'Рассказ создан ИИ по указанным источникам. Проверьте важные детали.':'Сохранённый рассказ. Источники ещё не перепроверены.'):t('Озвучивается текст статьи, разделённый на фрагменты. Доступен по лицензии статьи; авторы и история изменений — в источнике. Это не ответ ИИ.');
  $('question-chips').replaceChildren(...((p.lang||'ru')===LANGUAGE?(p.questions||[]):[]).map(q=>{const b=document.createElement('button');b.textContent=q.question;b.onclick=()=>ask(q.question,state.ai?undefined:q.answer);return b}));
@@ -238,3 +239,4 @@ async function translateLibrary(){
  // Always derive the next view from live arrays; late results are display-cache entries only.
  if(state.tab!=='explore')renderLibrary();
 }
+

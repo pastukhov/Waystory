@@ -2,9 +2,10 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {normalizePlace,mergePlaces,refKey} from '../server/places/model.mjs';
 const p=(id,q,lat=36)=>({id,refs:[{provider:'wikidata',id:q},...(id.startsWith('wiki:')?[{provider:'wikipedia',language:'en',pageId:Number(id.split(':')[2])}]:id.startsWith('osm:')?[{provider:'osm',kind:id.split(':')[1],id:Number(id.split(':')[2])}]:[])],names:{original:'Hacımehmetli',native:{text:'Hacımehmetli',sourceId:'s'}},coordinates:{lat,lon:32,kind:'point',sourceId:'s'},category:'mosque',sourceIds:['s']});
 test('shared identifiers merge but unrelated same names remain distinct',()=>{const a=p('wiki:en:1','Q1');const b=p('osm:node:2','Q1');assert.equal(mergePlaces([a,b])[0].id,a.id);assert.equal(mergePlaces([a,p('osm:node:3','Q3')]).length,2);assert.equal(normalizePlace(a).names.native.text,'Hacımehmetli')});
-test('coordinate disagreement is preserved without averaging',()=>{const [r]=mergePlaces([p('wd:Q1','Q1'),p('osm:node:2','Q1',37)]);assert.equal(r.coordinates.lat,36);assert.equal(r.coordinateConflict.length,2)});
+test('coordinate disagreement is preserved without averaging',()=>{const [r]=mergePlaces([p('wd:Q1','Q1'),{...p('osm:node:2','Q1',37),coordinates:{lat:37,lon:32,kind:'point',sourceId:'osm:node:2'}}]);assert.equal(r.coordinates.lat,36);assert.equal(r.coordinateConflict.length,2)});
 test('ref validation rejects injection and non-positive identifiers',()=>{assert.throws(()=>refKey({provider:'wikidata',id:'Q1;drop'}));assert.throws(()=>refKey({provider:'osm',kind:'node',id:-1}));assert.throws(()=>normalizePlace({...p('wd:Q1','Q1'),coordinates:{lat:99,lon:0,sourceId:'s',kind:'point'}}))});
 
 test('OSM nodes and relations stay distinct without references',()=>{assert.equal(mergePlaces([p('osm:node:7','Q7'),p('osm:relation:7','Q8')]).length,2)});
 test('enrichment keeps populated administrative references',()=>{const [merged]=mergePlaces([{...p('wd:Q1','Q1'),areaRefs:[]},{...p('osm:node:2','Q1'),areaRefs:[{provider:'wikidata',id:'Q2'}]}]);assert.equal(merged.areaRefs[0].id,'Q2')});
 test('a coincident mapped polygon stays a centroid when linked to Wikipedia',()=>{const a=p('wiki:en:1','Q1');const b={...p('osm:way:2','Q1'),coordinates:{lat:36,lon:32,kind:'centroid',sourceId:'osm:way:2'}};assert.equal(mergePlaces([a,b])[0].coordinates.kind,'centroid')});
+
