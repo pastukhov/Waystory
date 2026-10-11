@@ -35,3 +35,5 @@ test('fallback waits when paused; stop cancels pending local narration',async()=
  let finish;const {n}=setup(()=>new Promise(r=>finish=r));const d=device(n);n.play([{id:'a',text:'Hello'}]);n.pause();finish(Response.json({error:'down'},{status:502}));await tick();assert.equal(d.spoken.length,0);assert.equal(n.state,'paused');n.resume();assert.equal(d.spoken.length,1);n.stop();d.spoken[0].onend();assert.equal(n.state,'idle');
 });
 test('auth and quota errors do not activate device fallback',async()=>{for(const status of [401,403,429]){const {n}=setup(async()=>Response.json({error:'denied'},{status}));const d=device(n);n.play([{id:'a',text:'Hello'}]);await tick();assert.equal(d.spoken.length,0)}});
+
+test('cloud requests omit technical citations from saved stories',async()=>{const bodies=[];const {n}=setup(async(url,o)=>{bodies.push(JSON.parse(o.body).text);return new Response('audio')});n.play([{id:'citation',text:'Источник: wikipedia:ru:8922043.'},{id:'story',text:'История башни. Источник: wikipedia:en:47620877.'}]);await tick();assert.deepEqual(bodies,['История башни.']);n.stop()});
