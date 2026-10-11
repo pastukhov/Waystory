@@ -106,3 +106,16 @@ test('an edition hitting the provider deadline does not discard an edition alrea
  const wiki=createWikipediaProvider({request:async url=>{if(new URL(url).hostname==='ru.wikipedia.org'){controller.abort(new DOMException('Deadline','TimeoutError'));throw controller.signal.reason}return {query:{pages:{1:{pageid:1,title:'Tower',extract:'Successful edition.'}}}}}});
  const result=await wiki.documents({refs:[{provider:'wikipedia',language:'en',pageId:1},{provider:'wikipedia',language:'ru',pageId:2}]},{signal:controller.signal});assert.equal(result.documents.length,1);assert.equal(result.status,'partial');
 });
+
+for(const initialStatus of ['unavailable','partial'])test(`successful title recovery clears ${initialStatus} Wikipedia status`,async()=>{
+ const store=createPlaceStore({dbPath:':memory:'});
+ const osm=createOsmProvider({request:async()=>({elements:[{type:'node',id:1,tags:{name:'Tower',wikipedia:'en:Tower'}}]})});
+ const wiki=createWikipediaProvider({request:async()=>({query:{pages:{1:{pageid:1,title:'Tower',extract:'Recovered history.'}}}})});
+ wiki.documents=async()=>({documents:[],status:initialStatus});
+ try{
+  const place=store.upsert({id:'osm:node:1',refs:[{provider:'osm',kind:'node',id:1}],names:{original:'Tower'},sourceIds:['osm:node:1'],coordinates:null});
+  const bundle=await createPlaces({store,providers:[wiki,osm]}).collect(place);
+  assert.equal(bundle.documents.filter(d=>d.text).length,1);
+  assert.equal(bundle.statuses.find(s=>s.provider==='wikipedia').status,'ok');
+ }finally{store.close()}
+});

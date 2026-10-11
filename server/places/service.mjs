@@ -39,7 +39,7 @@ export function createPlaces({store,providers,now=Date.now,enrichment}={}){
   if(!recovery.attempted)return bundle;
   const saved=save(resolved),updated=saved.places.find(p=>p.id===place.id)||store.getById(place.id)||place;
   const documents=resolved.flatMap(r=>r.documents||[]);
-  const statuses=bundle.statuses.map(s=>s.provider!=='wikipedia'?s:{...s,status:recovery.failed?(documents.some(d=>d.provider==='wikipedia')?'partial':'unavailable'):['partial','unavailable'].includes(s.status)?s.status:documents.some(d=>d.provider==='wikipedia')?'ok':'empty'});
+  const statuses=bundle.statuses.map(s=>s.provider!=='wikipedia'?s:{...s,status:recovery.failed?(documents.some(d=>d.provider==='wikipedia')?'partial':'unavailable'):documents.some(d=>d.provider==='wikipedia')?'ok':'empty'});
   return sourceBundle(updated,documents,statuses);
  }};
 }
