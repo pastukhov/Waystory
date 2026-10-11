@@ -35,5 +35,16 @@ if(mode==='diagnose'){
  if(!key||!folder){report({probe:'ai',error:'not_configured'});process.exitCode=1}else{
   const model=env.YANDEX_QUESTION_MODEL||'aliceai-llm-flash';
   await probe('ai','https://ai.api.cloud.yandex.net/v1/chat/completions',{method:'POST',headers:{Authorization:'Api-Key '+key,'OpenAI-Project':folder,'Content-Type':'application/json','x-data-logging-enabled':'false'},body:JSON.stringify({model:model.startsWith('gpt://')?model:`gpt://${folder}/${model}`,messages:[{role:'user',content:'Reply with OK.'}],max_tokens:32,stream:false})});
+  const {createGuide}=await import(new URL('./server/guide.mjs','file://'+process.cwd()+'/'));
+  const start=Date.now();
+  const guide=createGuide({env,fetchFn:async(...args)=>{
+   const response=await fetch(...args);
+   if(!response.ok)report({probe:'ai-story-upstream',status:response.status,error:await errorBody(response.clone())});
+   return response;
+  }});
+  try{
+   const story=await guide.run({action:'story',language:'ru',place:{title:'Aunesis',source:'https://en.wikipedia.org/wiki/Aunesis',text:'Aunesis was a coastal town of ancient Pamphylia or of Cilicia, inhabited during Roman times. It was the port of Hamaxia. Its site is located below Hamaxia, in Turkey.'}});
+   report({probe:'ai-story',valid:true,language:story.language,blocks:story.blocks.length,durationMs:Date.now()-start});
+  }catch(error){report({probe:'ai-story',valid:false,status:error.status||null,error:clean(error.message),durationMs:Date.now()-start});process.exitCode=1}
  }
 }else{report({error:'unsupported_operation'});process.exitCode=1}
