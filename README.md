@@ -166,3 +166,11 @@ Signed-in invited users have unlimited request counts by default (`AUTHENTICATED
 ### Remote operations
 
 [Operations workflow and runbook](docs/operations.md) provide diagnostics, small paid provider probes, restart and previous-image rollback through the existing GitHub Runner. An assistant can request these via `ops/request.json` in a PR; no manual SSH command is needed. Ordinary successful deployments run free diagnostics only.
+
+Каталог дополнительных источников хранится отдельно от аккаунтов (`SOURCE_DB_PATH`).
+На этапе внедрения `MULTISOURCE_ENABLED=false` сохраняет действующий поиск.
+Места объединяются только по общим идентификаторам. Старые Wikipedia IDs сохраняются
+как aliases; противоречащие координаты сохраняются для проверки.
+Wikidata: CC0; OSM: ODbL, только метаданные. Тексты Wikimedia и производные рассказы
+и аудио требуют атрибуции и CC BY-SA 4.0. Права на изображения проверяются отдельно.
+Неизвестная лицензия запрещает передачу текста модели и кэширование текста.
