@@ -1,3 +1,4 @@
+import {sourcePolicy} from './sources/policies.mjs';
 import {providerFailure} from './diagnostics.mjs';
 import {createHash} from 'node:crypto';
 import {STORY_VERSION} from '../dist/language.mjs';
@@ -98,7 +99,7 @@ function result(input,data){
  return {text:data.text};
 }
 
-export function createGuide({env=process.env,fetchFn=fetch,now=Date.now}={}){
+export function createGuide({env=process.env,fetchFn=fetch,now=Date.now,collectSources}={}){
  const enabled=!!(env.YANDEX_API_KEY?.trim()&&env.YANDEX_FOLDER_ID?.trim());
  if(!enabled)return {enabled:false,run:async()=>{throw new GuideError(503,'ИИ пока не подключён. Попробуйте готовые истории и вопросы.')}};
  if(!/^[a-zA-Z0-9_-]+$/.test(env.YANDEX_FOLDER_ID))throw new Error('Invalid YANDEX_FOLDER_ID');
@@ -106,6 +107,13 @@ export function createGuide({env=process.env,fetchFn=fetch,now=Date.now}={}){
  const hourLimit=number(env,'AI_REQUESTS_PER_HOUR',120,10000),timeout=number(env,'AI_TIMEOUT_MS',60000,90000);
  const cache=new Map();let windowStart=now(),calls=0,active=0;
  return {enabled:true,async run(payload,signal){
+  if(payload?.placeId){
+   if(!collectSources||typeof payload.placeId!=='string'||! /^(wiki:(ru|en|tr):[1-9]\d*|wd:Q[1-9]\d*|osm:(node|way|relation):[1-9]\d*)$/.test(payload.placeId)||!['ru','en'].includes(payload.language||'ru'))throw bad();
+   const bundle=await collectSources(payload.placeId,{language:payload.language||'ru',signal});
+   const docs=bundle.documents.filter(d=>d.text?.trim()&&sourcePolicy(d.license?.policyId).allowModelInput);
+   const source=docs.find(d=>d.provider==='wikipedia');if(!source)throw new GuideError(422,'Недостаточно источников для рассказа об этом месте.');
+   payload={...payload,place:{title:bundle.place.names.original,source:source.url,text:docs.map(d=>d.text).join('\n').slice(0,14000)}};
+  }
   const input=validate(payload);
   const key=['story','translatePlaces'].includes(input.action)?createHash('sha256').update(JSON.stringify({version:STORY_VERSION,...input})).digest('hex'):null;
   if(key&&cache.has(key)){

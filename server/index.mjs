@@ -12,6 +12,7 @@ import {createPlaces} from './places/service.mjs';
 import {createSourceHttp} from './sources/http.mjs';
 import {createWikipediaProvider} from './sources/wikipedia.mjs';
 import {createOsmProvider} from './sources/osm.mjs';
+import {createWikivoyageProvider} from './sources/wikivoyage.mjs';
 import {createWikidataProvider} from './sources/wikidata.mjs';
 const root=fileURLToPath(new URL('../dist/',import.meta.url));
 const mime={'.html':'text/html; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
@@ -28,8 +29,9 @@ export function createApp(options={}){
  const settings=sourceSettings(options.env||process.env);
  const store=options.placeStore||(settings.enabled?createPlaceStore({dbPath:options.sourceDbPath||settings.dbPath}):null);
  const sourceRequest=settings.enabled?createSourceHttp({fetchFn:options.sourceFetchFn,osmEndpoint:settings.osmEndpoint}):null;
- const places=options.places||(store?createPlaces({store,providers:options.sourceProviders||[createWikipediaProvider({request:sourceRequest}),createOsmProvider({request:sourceRequest,endpoint:settings.osmEndpoint}),createWikidataProvider({request:sourceRequest})]}):null);
- const guide=createGuide(options),speech=createSpeech(options),auth=options.auth||createAuth({env:options.env,fetchFn:options.authFetchFn,dbPath:options.authDbPath});const server=http.createServer(async(req,res)=>{
+ const wikidata=sourceRequest?createWikidataProvider({request:sourceRequest}):null;
+ const places=options.places||(store?createPlaces({store,providers:options.sourceProviders||[createWikipediaProvider({request:sourceRequest}),createOsmProvider({request:sourceRequest,endpoint:settings.osmEndpoint}),wikidata,createWikivoyageProvider({request:sourceRequest,wikidata})]}):null);
+ const guide=createGuide({...options,collectSources:options.collectSources||(places?async(id,o)=>{const p=store.getById(id);if(!p)throw new GuideError(404,'Место не найдено. Повторите поиск.');return places.collect(p,o)}:undefined)}),speech=createSpeech(options),auth=options.auth||createAuth({env:options.env,fetchFn:options.authFetchFn,dbPath:options.authDbPath});const server=http.createServer(async(req,res)=>{
  const json=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data))};
  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: https://upload.wikimedia.org; media-src 'self' blob:; connect-src 'self' https://ru.wikipedia.org https://en.wikipedia.org https://tr.wikipedia.org; object-src 'none'; base-uri 'self'");
  let pathname;try{pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname)}catch{return json(400,{error:'Неверный адрес.'})}
