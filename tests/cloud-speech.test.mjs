@@ -21,3 +21,17 @@ test('a thousands separator near a chunk boundary cannot split the number',async
  n.play([{id:'a',text:'a '.repeat(498)+'2 144 человека.'}]);await tick();audio.onended();await tick();
  assert.match(bodies.join(' '),/2144 человека/);assert.equal(bodies.some(s=>s.endsWith('2')),false);n.stop();
 });
+function device(n){const spoken=[];let pauses=0,resumes=0;n.synth={cancel(){},getVoices:()=>[{lang:'ru-RU',localService:true}],speak:u=>spoken.push(u),pause:()=>pauses++,resume:()=>resumes++};n.Utterance=class{constructor(text){this.text=text}};return {spoken,get pauses(){return pauses},get resumes(){return resumes}}}
+test('provider failure switches to device voice and retains language, speed and completion',async()=>{
+ let calls=0;const {n,heard,errors}=setup(async()=>{calls++;return Response.json({error:'unavailable'},{status:502})});const d=device(n);n.language='en';n.rate=1.2;
+ n.play([{id:'a',text:'Hello'},{id:'b',text:'World'}]);await tick();assert.equal(d.spoken[0]?.text,'Hello');assert.equal(d.spoken[0].lang,'en-US');assert.equal(d.spoken[0].rate,1.2);assert.match(errors[0],/голос устройства/);
+ n.pause();assert.equal(d.pauses,1);n.resume();assert.equal(d.resumes,1);d.spoken[0].onend();d.spoken[1].onend();assert.deepEqual(heard,['a','b']);n.play([{id:'c',text:'Again'}]);assert.equal(calls,1);n.stop();
+});
+test('fallback resumes only unfinished parts and does not mark a partial block heard',async()=>{
+ let calls=0;const {n,audio,heard}=setup(async()=>++calls===1?new Response('audio'):Response.json({error:'unavailable'},{status:502}));const d=device(n);
+ n.play([{id:'a',text:'a '.repeat(700)},{id:'b',text:'Next'}]);await tick();audio.onended();await tick();assert.ok(d.spoken[0].text.length<500);assert.deepEqual(heard,[]);d.spoken[0].onend();assert.deepEqual(heard,['a']);d.spoken[1].onend();assert.deepEqual(heard,['a','b']);
+});
+test('fallback waits when paused; stop cancels pending local narration',async()=>{
+ let finish;const {n}=setup(()=>new Promise(r=>finish=r));const d=device(n);n.play([{id:'a',text:'Hello'}]);n.pause();finish(Response.json({error:'down'},{status:502}));await tick();assert.equal(d.spoken.length,0);assert.equal(n.state,'paused');n.resume();assert.equal(d.spoken.length,1);n.stop();d.spoken[0].onend();assert.equal(n.state,'idle');
+});
+test('auth and quota errors do not activate device fallback',async()=>{for(const status of [401,403,429]){const {n}=setup(async()=>Response.json({error:'denied'},{status}));const d=device(n);n.play([{id:'a',text:'Hello'}]);await tick();assert.equal(d.spoken.length,0)}});
