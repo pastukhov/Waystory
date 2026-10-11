@@ -7,3 +7,5 @@ const policies={
 };
 export function sourcePolicy(id){return Object.freeze({...policies[id]||{licenseId:'unknown',licenseUrl:null,allowModelInput:false,allowTextCache:false,ttlMs:0,attributionRequired:true}})}
 export function licenseFor(policyId,attribution){const p=sourcePolicy(policyId);return {id:p.licenseId,url:p.licenseUrl,policyId,attribution}}
+
+export function registerSourcePolicy(id,policy){if(!id||Object.hasOwn(policies,id))return;policies[id]=Object.freeze({...policy})}

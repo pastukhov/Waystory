@@ -2,6 +2,10 @@ import {LANGUAGE} from './language.mjs';
 
 // Explicit UI catalog: Russian source keys, English equivalents.
 export const messages={
+"Найти официальные материалы":"Find official sources",
+"Ищем официальные материалы…":"Finding official sources…",
+"Лимит поиска официальных материалов исчерпан.":"Official source search budget is exhausted.",
+"Дополнительных материалов не найдено.":"No additional materials found.",
 "Источники":"Sources",
 "Региональный контекст":"Regional context",
 "Об этом месте":"About this place",
