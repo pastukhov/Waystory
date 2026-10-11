@@ -1,0 +1,34 @@
+// Executed via stdin inside the existing container. Never prints environment values.
+const mode=process.argv[2]||'diagnose',env=process.env;
+const secrets=Object.entries(env).filter(([k,v])=>/KEY|SECRET|TOKEN|PASSWORD|COOKIE|FOLDER|EMAIL|CLIENT_ID/.test(k)&&v?.length>3).map(([,v])=>v).sort((a,b)=>b.length-a.length);
+const clean=value=>secrets.reduce((s,v)=>s.replaceAll(v,'[redacted]'),String(value)).slice(0,1200);
+const report=data=>console.log(JSON.stringify(data));
+async function errorBody(response){
+ const reader=response.body?.getReader();if(!reader)return '';
+ let text='',bytes=0;try{while(bytes<8192){const {done,value}=await reader.read();if(done)break;bytes+=value.length;text+=Buffer.from(value).toString('utf8')}}finally{await reader.cancel().catch(()=>{})}
+ return clean(text);
+}
+async function probe(name,url,options){
+ const start=Date.now();try{const r=await fetch(url,{...options,redirect:'error',signal:AbortSignal.timeout(20000)});const result={probe:name,status:r.status,durationMs:Date.now()-start};
+ if(!r.ok){result.error=await errorBody(r);process.exitCode=1}else await r.body?.cancel();report(result);
+ }catch(e){report({probe:name,error:e.name==='TimeoutError'?'timeout':'network_error',durationMs:Date.now()-start});process.exitCode=1}
+}
+if(mode==='diagnose'){
+ const base='http://127.0.0.1:5173';
+ try{
+  const r=await fetch(base+'/api/session',{signal:AbortSignal.timeout(5000)}),s=await r.json();report({probe:'session',status:r.status,googleConfigured:s.enabled===true,anonymous:s.user===null});if(!r.ok||s.user!==null)process.exitCode=1;
+  for(const path of ['/api/guide','/api/speech']){const r=await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(5000)});report({probe:path,status:r.status,anonymousDenied:r.status===(s.enabled?401:503)});if(r.status!==(s.enabled?401:503))process.exitCode=1;await r.body?.cancel()}
+ }catch{report({probe:'application',error:'unreachable'});process.exitCode=1}
+}else if(mode==='speech-test'){
+ const key=env.YANDEX_TTS_API_KEY||env.YANDEX_API_KEY;if(!key){report({probe:'speech',error:'not_configured'});process.exitCode=1}else{
+  for(const [lang,voice,text] of [['ru-RU',env.YANDEX_TTS_VOICE_RU||env.YANDEX_TTS_VOICE||'filipp','Проверка голоса.'],['en-US',env.YANDEX_TTS_VOICE_EN||'john','Voice test.']]){
+   await probe('speech-'+lang,'https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize',{method:'POST',headers:{Authorization:'Api-Key '+key,'Content-Type':'application/x-www-form-urlencoded','x-data-logging-enabled':'false'},body:new URLSearchParams({text,voice,lang,format:'mp3',speed:'1.0'}).toString()});
+  }
+ }
+}else if(mode==='ai-test'){
+ const key=env.YANDEX_API_KEY,folder=env.YANDEX_FOLDER_ID;
+ if(!key||!folder){report({probe:'ai',error:'not_configured'});process.exitCode=1}else{
+  const model=env.YANDEX_QUESTION_MODEL||'aliceai-llm-flash';
+  await probe('ai','https://ai.api.cloud.yandex.net/v1/chat/completions',{method:'POST',headers:{Authorization:'Api-Key '+key,'OpenAI-Project':folder,'Content-Type':'application/json','x-data-logging-enabled':'false'},body:JSON.stringify({model:model.startsWith('gpt://')?model:`gpt://${folder}/${model}`,messages:[{role:'user',content:'Reply with OK.'}],max_tokens:32,stream:false})});
+ }
+}else{report({error:'unsupported_operation'});process.exitCode=1}

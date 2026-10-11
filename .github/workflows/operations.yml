@@ -1,0 +1,65 @@
+name: Operations
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'diagnose is free; speech-test makes 2 paid calls; ai-test makes 1'
+        required: true
+        default: diagnose
+        type: choice
+        options: [diagnose, speech-test, ai-test, restart, rollback]
+  workflow_run:
+    workflows: [Deploy]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: waystory-production
+  cancel-in-progress: false
+
+jobs:
+  operations:
+    if: >-
+      vars.WAYSTORY_DEPLOY_ENABLED == 'true' &&
+      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: [self-hosted, Linux, X64, waystory]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Run an approved operation
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_OPERATION: ${{ inputs.operation }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          current_main="$(git ls-remote https://github.com/pastukhov/Waystory.git refs/heads/main | cut -f1)"
+          if [ "$(git rev-parse HEAD)" != "$current_main" ]; then
+            echo 'Skipping stale revision; run Operations on current main.'
+            exit 0
+          fi
+          operation=diagnose
+          request_id="run-$RUN_ID-$RUN_ATTEMPT"
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            operation="$REQUESTED_OPERATION"
+          elif ! git diff --quiet HEAD^ HEAD -- ops/request.json; then
+            read -r operation request_id < <(node scripts/ops-request.mjs)
+          fi
+          if [ "$EVENT_NAME" = workflow_run ]; then
+            export WAYSTORY_EXPECT_REVISION="$(git rev-parse HEAD)"
+          fi
+          bash scripts/operations-vm.sh "$operation" "$request_id"

@@ -1,3 +1,4 @@
+import {providerFailure} from './diagnostics.mjs';
 import {createHash} from 'node:crypto';
 import {STORY_VERSION} from '../dist/language.mjs';
 
@@ -115,24 +116,26 @@ export function createGuide({env=process.env,fetchFn=fetch,now=Date.now}={}){
   if(active>=2)throw new GuideError(429,'Гид сейчас занят. Повторите запрос через несколько секунд.');
   calls++;active++;
   const deadline=AbortSignal.timeout(timeout);
+  const started=Date.now();let providerStatus=null,succeeded=false;
   try{
    const response=await fetchFn('https://ai.api.cloud.yandex.net/v1/chat/completions',{
     method:'POST',redirect:'error',signal:signal?AbortSignal.any([signal,deadline]):deadline,
     headers:{Authorization:'Api-Key '+env.YANDEX_API_KEY,'OpenAI-Project':env.YANDEX_FOLDER_ID,'Content-Type':'application/json','x-data-logging-enabled':'false'},
     body:JSON.stringify({model:models[input.action],messages:messages(input),stream:false,temperature:0.3,max_tokens:input.action==='story'?4000:input.action==='translatePlaces'?2500:900,response_format:{type:'json_schema',json_schema:{name:'waystory_'+input.action,schema:schemas[input.action]}}})
    });
+   providerStatus=response.status;
    if(response.status===429)throw new GuideError(429,'Лимит провайдера ИИ временно исчерпан. Попробуйте позже.');
    if(!response.ok)throw upstream();
    const output=await response.json(),choice=output.choices?.[0];
    if(choice?.finish_reason!=='stop'||typeof choice.message?.content!=='string')throw upstream();
    const value=result(input,JSON.parse(choice.message.content));
    if(key){if(cache.size>=100)cache.delete(cache.keys().next().value);cache.set(key,{value,time:now()})}
-   return value;
+   succeeded=true;return value;
   }catch(error){
    if(error instanceof GuideError)throw error;
    if(deadline.aborted)throw new GuideError(504,'ИИ отвечает слишком долго. Попробуйте ещё раз.');
    if(signal?.aborted)throw new GuideError(499,'Запрос отменён.');
    throw upstream();
-  }finally{active--}
+  }finally{active--;if(!succeeded&&!signal?.aborted)providerFailure('ai',providerStatus,Date.now()-started)}
  }};
 }

@@ -162,3 +162,7 @@ using deterministic fixtures rather than paid provider requests.
 Paid AI and speech now require an invited Google account. Follow [Google OAuth setup](docs/google-login.md) to configure the Client ID, secret and allowed emails in the server `.env`. Accounts, sessions and daily request quotas use a persistent Docker volume. With missing OAuth settings paid calls fail closed; public Wikipedia search remains available. Favorites and listening history are still device-local.
 
 Signed-in invited users have unlimited request counts by default (`AUTHENTICATED_REQUESTS_UNLIMITED=true`). Usage remains visible as daily statistics. Set this option to `false` to enforce the configured daily/hourly request quotas; authentication and concurrency limits are always enforced.
+
+### Remote operations
+
+[Operations workflow and runbook](docs/operations.md) provide diagnostics, small paid provider probes, restart and previous-image rollback through the existing GitHub Runner. An assistant can request these via `ops/request.json` in a PR; no manual SSH command is needed. Ordinary successful deployments run free diagnostics only.
