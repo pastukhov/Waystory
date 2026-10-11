@@ -23,7 +23,7 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
     if(body.action==='translatePlaces')return r.fulfill({json:{language,places:body.places.map(p=>({...p,title,subtitle:language==='ru'?'История города':'City history'}))}});
     if(body.action==='story'){
      if(failStory)return r.fulfill({status:502,json:{error:'Translation temporarily unavailable'}});
-     return r.fulfill({json:{title,language,storyVersion:2,detailLimited:false,blocks:[{id:'s0',depth:0,title,text:(language==='ru'?'Главное. ':'Essentials. ').repeat(40)},{id:'s1',depth:1,title,text:(language==='ru'?'История. ':'History. ').repeat(80)},{id:'s2',depth:2,title,text:(language==='ru'?'Подробности. ':'Details. ').repeat(150)}]}});
+     return r.fulfill({json:{title,language,storyVersion:3,detailLimited:false,blocks:[{id:'s0',depth:0,title,text:(language==='ru'?'Главное. ':'Essentials. ').repeat(40)},{id:'s1',depth:1,title,text:(language==='ru'?'История. ':'History. ').repeat(80)},{id:'s2',depth:2,title,text:(language==='ru'?'Подробности. ':'Details. ').repeat(150)}]}});
     }
     return r.fulfill({json:{text:language==='ru'?'Ответ по источнику.':'An answer based on the source.'}});
    });

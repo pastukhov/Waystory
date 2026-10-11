@@ -10,7 +10,7 @@ test('AI diagnostics exercise the real story parser with a fixed source',async()
  const old={fetch:globalThis.fetch,log:console.log,arg:process.argv[2],exit:process.exitCode,key:process.env.YANDEX_API_KEY,folder:process.env.YANDEX_FOLDER_ID};const lines=[],requests=[];
  try{
   process.argv[2]='ai-test';process.env.YANDEX_API_KEY='diagnostic-ai-secret';process.env.YANDEX_FOLDER_ID='test-folder';
-  globalThis.fetch=async(url,options)=>{const body=JSON.parse(options.body);requests.push(body);if(body.response_format)return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({title:'Аунесис',blocks:[{title:'Главное',depth:0,text:'Аунесис был прибрежным городом и портом Гамаксии.'}]})}}]});return Response.json({choices:[{message:{content:'OK'}}]})};
+  globalThis.fetch=async(url,options)=>{const body=JSON.parse(options.body);requests.push(body);if(body.response_format)return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({title:'Аунесис',blocks:[{title:'Главное',depth:0,sourceIds:['ops-aunesis'],text:'Аунесис был прибрежным городом и портом Гамаксии.'}]})}}]});return Response.json({choices:[{message:{content:'OK'}}]})};
   console.log=s=>lines.push(JSON.parse(s));await import('../scripts/ops-probe.mjs?story-test');
   assert.equal(requests.length,2);assert.equal(requests[1].response_format.json_schema.name,'waystory_story');assert.match(requests[1].messages[1].content,/Aunesis/);
   assert.ok(lines.some(x=>x.probe==='ai-story'&&x.valid===true&&x.language==='ru'));
