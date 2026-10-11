@@ -2,6 +2,9 @@ import {LANGUAGE} from './language.mjs';
 
 // Explicit UI catalog: Russian source keys, English equivalents.
 export const messages={
+"Для этого места пока нет подтверждённых материалов. Расширенный поиск ещё не подключён.":"No verified material is available for this place yet. Extended search is not connected yet.",
+"Лимит поиска материалов исчерпан. Сохранённые рассказы доступны.":"The source search budget is exhausted. Saved stories are available.",
+"Материалы найдены, но пока недоступны для создания рассказа.":"Material was found but is not yet available for creating a story.",
 "Найти официальные материалы":"Find official sources",
 "Ищем официальные материалы…":"Finding official sources…",
 "Лимит поиска официальных материалов исчерпан.":"Official source search budget is exhausted.",

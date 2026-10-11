@@ -13,3 +13,5 @@ test('provider failure messages and successful data reach the caller',async()=>{
  await assert.rejects(requestGuide({action:'question'},{fetchFn:async()=>Response.json({error:'Лимит исчерпан'},{status:429})}),/Лимит исчерпан/);
  assert.deepEqual(await requestGuide({action:'question'},{fetchFn:async()=>Response.json({text:'Ответ'})}),{text:'Ответ'});
 });
+
+test('source error outcome and retryability survive API boundary',async()=>{await assert.rejects(requestGuide({action:'story'},{fetchFn:async()=>Response.json({error:'No material',code:'no_material',retryable:false,diagnosticId:'d'},{status:422})}),e=>e.code==='no_material'&&e.retryable===false&&e.diagnosticId==='d')});

@@ -1,3 +1,4 @@
+import {reviewGrounding} from './sources/facts.mjs';
 import {legacyReference,modelDocuments,citationMetadata,validateCitations} from './sources/evidence.mjs';
 import {sourcePolicy} from './sources/policies.mjs';
 import {providerFailure} from './diagnostics.mjs';
@@ -47,8 +48,8 @@ function validate(payload){
   if(!valid||bytes.length>5*1024*1024||bytes.toString('base64')!==match[2])throw bad();
   return {action:'identify',language,image:payload.image,context:payload.context||''};
  }
- const result={action:payload.action,language};
- if(payload.placeId!==undefined){if(!str(payload.placeId,300)||! /^(wiki:(ru|en|tr):[1-9]\d*|wd:Q[1-9]\d*|osm:(node|way|relation):[1-9]\d*)$/.test(payload.placeId))throw bad();result.placeId=payload.placeId}
+ const result={action:payload.action,language,refresh:payload.refresh===true};
+ if(payload.placeId!==undefined){if(!str(payload.placeId,300)||! /^(wiki:[a-z]{2,3}(?:-[a-z]{2,12})?:[1-9]\d*|wd:Q[1-9]\d*|osm:(node|way|relation):[1-9]\d*)$/.test(payload.placeId))throw bad();result.placeId=payload.placeId}
  else {try{result.legacy=legacyReference(payload.place?.source)}catch{throw bad()}}
  if(payload.action==='question'){
   const ids=payload.heardBlockIds??[];
@@ -112,12 +113,13 @@ export function createGuide({env=process.env,fetchFn=fetch,now=Date.now,collectS
   if(['story','question'].includes(input.action)){
    if(!collectSources)throw new GuideError(503,'Источники рассказа временно недоступны.');
    if(input.legacy){if(!resolveLegacy)throw new GuideError(503,'Источник места временно недоступен.');input.placeId=await resolveLegacy(input.legacy,{language:input.language,signal});delete input.legacy}
-   input.bundle=await collectSources(input.placeId,{language:input.language,signal});
+   input.bundle=await collectSources(input.placeId,{language:input.language,signal,refresh:input.refresh});
+   if(input.bundle.outcome&&!modelDocuments(input.bundle).length){const code=input.bundle.outcome,retryable=code==='temporarily_unavailable';const messages={not_configured:'Для этого места пока нет подтверждённых материалов. Расширенный поиск ещё не подключён.',budget_exhausted:'Лимит поиска материалов исчерпан. Сохранённые рассказы доступны.',policy_restricted:'Материалы найдены, но пока недоступны для создания рассказа.',no_material:'Недостаточно источников для рассказа об этом месте.',temporarily_unavailable:'Источники рассказа временно недоступны.'};throw Object.assign(new GuideError(retryable?503:422,messages[code]||messages.no_material),{code,retryable,diagnosticId:input.bundle.diagnosticId})}
    if(!modelDocuments(input.bundle).length)throw new GuideError(input.bundle.statuses?.some(s=>s.status==='unavailable')?503:422,input.bundle.statuses?.some(s=>s.status==='unavailable')?'Источники рассказа временно недоступны.':'Недостаточно источников для рассказа об этом месте.');
    input.place={title:input.bundle.place.names.original};
    if(input.action==='question'){const prior=[...cache.values()].find(e=>e.placeId===input.placeId&&e.language===input.language&&e.fingerprint===input.bundle.fingerprint&&now()-e.time<24*3600000);input.heard=prior?prior.value.blocks.filter(b=>input.heardBlockIds.includes(b.id)).map(b=>b.text):[]}
   }
-  const key=['story','translatePlaces'].includes(input.action)?createHash('sha256').update(JSON.stringify({version:STORY_VERSION,model:models[input.action],action:input.action,language:input.language,...(input.bundle?{placeId:input.placeId,fingerprint:input.bundle.fingerprint}:{places:input.places})})).digest('hex'):null;
+  const key=['story','translatePlaces'].includes(input.action)?createHash('sha256').update(JSON.stringify({version:STORY_VERSION,sourcePipeline:2,model:models[input.action],action:input.action,language:input.language,...(input.bundle?{placeId:input.placeId,fingerprint:input.bundle.fingerprint}:{places:input.places})})).digest('hex'):null;
   if(key&&cache.has(key)){
    const entry=cache.get(key);if(now()-entry.time<24*3600000)return entry.value;cache.delete(key);
   }
@@ -140,8 +142,9 @@ export function createGuide({env=process.env,fetchFn=fetch,now=Date.now,collectS
    if(choice?.finish_reason!=='stop'||typeof choice.message?.content!=='string')throw upstream();
    const data=JSON.parse(choice.message.content);
    if(input.bundle){const ids=input.action==='story'?data.blocks?.map(b=>b.sourceIds):[data.sourceIds];if(!ids?.length||!ids.every(x=>validateCitations(x,input.bundle)))throw upstream()}
+   if(input.bundle?.documents.some(d=>d.provider==='global-web')){if(!await reviewGrounding(data,modelDocuments(input.bundle),{fetchFn,model:models[input.action],signal:signal?AbortSignal.any([signal,deadline]):deadline,headers:{Authorization:'Api-Key '+env.YANDEX_API_KEY,'OpenAI-Project':env.YANDEX_FOLDER_ID,'Content-Type':'application/json','x-data-logging-enabled':'false'}}))throw upstream()}
    const value=result(input,data);
-   if(input.bundle){value.sources=citationMetadata(input.bundle);value.placeId=input.placeId;value.fingerprint=input.bundle.fingerprint;const licenses=modelDocuments(input.bundle).map(d=>sourcePolicy(d.license.policyId).outputLicense);value.outputLicense=licenses.includes('CC-BY-SA-4.0')?'CC-BY-SA-4.0':licenses.find(Boolean)||null;if(value.blocks)value.blocks=value.blocks.map(b=>({...b,id:b.id+'-'+input.bundle.fingerprint.slice(0,12)}))}
+   if(input.bundle){value.evidenceScope=input.bundle.outcome==='context_only'?'area':'place';value.sourceOutcome=input.bundle.outcome||'ready';value.sources=citationMetadata(input.bundle);value.placeId=input.placeId;value.fingerprint=input.bundle.fingerprint;const licenses=modelDocuments(input.bundle).map(d=>sourcePolicy(d.license.policyId).outputLicense);value.outputLicense=licenses.includes('CC-BY-SA-4.0')?'CC-BY-SA-4.0':licenses.find(Boolean)||null;if(value.blocks)value.blocks=value.blocks.map(b=>({...b,id:b.id+'-'+input.bundle.fingerprint.slice(0,12)}))}
    if(key){if(cache.size>=100)cache.delete(cache.keys().next().value);cache.set(key,{value,time:now(),placeId:input.placeId,language:input.language,fingerprint:input.bundle?.fingerprint})}
    succeeded=true;return value;
   }catch(error){

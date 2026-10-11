@@ -14,5 +14,6 @@ for(const language of ['ru','en']){
   state.selected={...state.selected,lang:language,detailLimited:true,blocks:[{id:'a',title:'Title',depth:0,text:'A real story with text.'}]};runInNewContext('renderStory()',context);
   for(const selector of ['.depth-label','.depth-switch'])assert.equal(node(selector).hidden,false,selector);
   assert.equal(node('story-detail-notice').hidden,false);assert.equal(node('story-source-note').hidden,false);assert.equal(node('question-panel').hidden,false);assert.equal(node('story-play').disabled,false);assert.match(node('duration-label').textContent,/≈/);
+  state.selected.evidenceScope='area';runInNewContext('renderStory()',context);assert.equal(node('story-kind').textContent,t('Региональный контекст',language));
  });
 }

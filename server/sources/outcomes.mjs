@@ -1,0 +1,3 @@
+const reasons=new Set(['no_match','timeout','rate_limited','upstream_error','not_configured','budget_exhausted','policy_restricted']);
+export function sourceReason(error){return reasons.has(error?.reason)?error.reason:['TimeoutError','AbortError'].includes(error?.name)?'timeout':'upstream_error'}
+export function providerOutcome(provider,result,durationMs=0){const ok=result.status==='fulfilled',value=ok?result.value:null,status=ok?value.status||'ok':'unavailable';return {provider,status,reason:ok?(value.reason||({empty:'no_match',disabled:'not_configured','budget-exhausted':'budget_exhausted',unavailable:'upstream_error'}[status]??null)):sourceReason(result.reason),durationMs:Math.max(0,Math.round(durationMs)),documentCount:value?.documents?.length||0}}

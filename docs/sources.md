@@ -85,3 +85,37 @@ CI проверяет контракты/интерфейс, не достове
 одного источника не конфликтует с его старой точкой. Старые записи без provenance
 получают владельца names из первого sourceIds (native — из собственного sourceId);
 это совместимая миграция при чтении/записи, без сброса базы.
+
+## Global selected-place acquisition
+
+GLOBAL_SOURCE_DISCOVERY_ENABLED enables the new automatic search path only when a
+search key, positive WEB_SEARCH_MAX_CALLS_PER_DAY and reviewed
+GLOBAL_WEB_USE_POLICY_JSON are configured. No country/domain list is used for
+candidate discovery. The old explicit official-web operation remains separate.
+The reviewed JSON requires reviewed=true, an HTTPS termsUrl, reviewedAt,
+allowModelInput, allowGeneratedAudio and allowGeneratedTextCache. Raw-text
+retention is controlled separately by allowTextCache and ttlMs. Unknown policies
+are never silently treated as CC-BY-SA. These flags record an operator review,
+not a legal grant from the software.
+
+Acquisition preserves successful providers within a 3-second collection window,
+then spends at most 1 second recovering explicit Wikipedia links. The overall
+acquisition deadline is 20 seconds. Up to 2 search calls, 8 candidates and 3
+accepted web documents are allowed; 4 acquisitions run concurrently, at most 60
+new acquisitions per minute. Duplicate requests share work; caller cancellation
+stops that caller without duplicating paid work. Refresh bypasses negative cache
+but not limits. Retried upstream operations count against provider budgets.
+
+Positive evidence is cached in SQLite only if every document permits retention,
+with refresh TTL at most 6 hours and retention no longer than source policy.
+Negative results last 15 minutes; transient failures last 30 seconds. Permitted
+historical documents may be used during an outage up to their policy TTL and
+carry stale=true with the original retrieval date. Visitor information is excluded.
+Web evidence is not mixed with open-source narrative text under an invented
+common license. Original identity metadata and all used source attributions remain.
+
+Each acquisition emits safe waystory_sources diagnostics with a correlation ID,
+public place ID, outcome, provider status/reason and duration. No request text,
+user GPS, credentials or document bodies are logged. Diagnose reports global
+configuration booleans separately from live coverage. See global-source-evaluation.md
+for unverified benchmark candidates and activation limitations.
