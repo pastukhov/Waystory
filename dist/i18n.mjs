@@ -2,6 +2,24 @@ import {LANGUAGE} from './language.mjs';
 
 // Explicit UI catalog: Russian source keys, English equivalents.
 export const messages={
+"Войти":"Sign in",
+"Аккаунт":"Account",
+"Продолжить с Google":"Continue with Google",
+"Выйти":"Sign out",
+"Для входа сохраняем имя и адрес почты Google. Пароль Google нам недоступен.":"We store your Google name and email to sign you in. We cannot access your Google password.",
+"Избранное и история пока хранятся только на этом устройстве.":"Favorites and history are still stored only on this device.",
+"Вход через Google пока не настроен.":"Google sign-in is not configured yet.",
+"Войдите через Google, чтобы пользоваться ИИ.":"Sign in with Google to use AI.",
+"Пилот доступен по приглашению. Войдите разрешённым Google-аккаунтом.":"This pilot is invite-only. Sign in with an invited Google account.",
+"Не удалось войти через Google. Повторите вход или проверьте приглашение.":"Could not sign in with Google. Try again or check your invitation.",
+"Дневной лимит исчерпан. Попробуйте завтра.":"Daily limit reached. Please try again tomorrow.",
+"Не удалось загрузить аккаунт. Повторите попытку.":"Could not load your account. Please try again.",
+"Не удалось выйти. Повторите попытку.":"Could not sign out. Please try again.",
+"Запросы ИИ сегодня":"AI requests today",
+"Фрагменты озвучки сегодня":"Audio segments today",
+"Лимиты обновляются в полночь UTC. Неудачные запросы тоже учитываются.":"Limits reset at midnight UTC. Failed requests also count.",
+"Поиск доступен без входа. ИИ-рассказы, вопросы и облачная озвучка — после входа через Google.":"Search is available without signing in. Sign in with Google for AI stories, questions and cloud narration.",
+
 "ВАШ ГОРОД, ВАШИ ИСТОРИИ":"YOUR CITY, YOUR STORIES",
 "Найдите своё место":"Find your place",
 "Нажмите «Что рядом со мной» или введите город или название места.":"Tap “What's near me” or search for a city or place.",

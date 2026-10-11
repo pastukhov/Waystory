@@ -8,7 +8,7 @@ import {searchPlaces,nearbyPlaces,loadPlace} from './wiki.mjs';
 
 localizeDocument();
 const $=id=>document.getElementById(id);
-const state={tab:'explore',places:[],selected:null,heard:[],depth:1,current:null,ai:false,vision:false,answer:false,photo:null,photoUrl:null};
+const state={user:null,authEnabled:false,tab:'explore',places:[],selected:null,heard:[],depth:1,current:null,ai:false,vision:false,answer:false,photo:null,photoUrl:null};
 const placeEpoch=createEpoch(),searchEpoch=createEpoch(),answerEpoch=createEpoch(),photoEpoch=createEpoch();
 let discoveryToken=0;
 const libraryMetadata=new Map(),libraryAttempts=new Set();
@@ -54,6 +54,28 @@ $('clear-history').onclick=()=>{if(!window.confirm(t('Удалить истор�
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 for(const id of ['about-open','mode-about','footer-about'])$(id).onclick=()=>openDialog('about-dialog');
 $('settings-open').onclick=()=>openDialog('settings-dialog');
+const authFailed=new URL(location.href).searchParams.has('auth_error');
+function renderAccount(data){
+ state.user=data.user;state.authEnabled=data.enabled;
+ $('account-open').textContent=t(data.user?'Аккаунт':'Войти');
+ $('account-email').textContent=data.user?.email||'';
+ $('account-status').textContent=data.user?data.user.name||t('Аккаунт'):t(authFailed?'Не удалось войти через Google. Повторите вход или проверьте приглашение.':data.enabled?'Пилот доступен по приглашению. Войдите разрешённым Google-аккаунтом.':'Вход через Google пока не настроен.');
+ $('google-login').hidden=!!data.user||!data.enabled;$('account-logout').hidden=!data.user;
+ $('account-usage').replaceChildren();
+ if(data.user&&data.usage){for(const [kind,label] of [['ai','Запросы ИИ сегодня'],['tts','Фрагменты озвучки сегодня']]){const p=document.createElement('p');p.textContent=t(label)+': '+data.usage[kind].used+' / '+data.usage[kind].limit;$('account-usage').append(p)}const note=document.createElement('p');note.className='small muted';note.textContent=t('Лимиты обновляются в полночь UTC. Неудачные запросы тоже учитываются.');$('account-usage').append(note)}
+}
+async function loadAccount(){
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
+ try{const r=await fetch('/api/session',{signal:controller.signal});if(!r.ok)throw new Error();const data=await r.json();renderAccount(data);return data}
+ catch{state.user=null;state.authEnabled=false;$('google-login').hidden=true;$('account-status').textContent=t('Не удалось загрузить аккаунт. Повторите попытку.');return null}finally{clearTimeout(timer)}
+}
+$('account-open').onclick=()=>{openDialog('account-dialog');loadAccount()};
+$('account-logout').onclick=async()=>{
+ $('account-logout').disabled=true;
+ try{const r=await fetch('/auth/logout',{method:'POST'});if(!r.ok)throw new Error();narrator.stop();location.reload()}
+ catch{$('account-status').textContent=t('Не удалось выйти. Повторите попытку.');$('account-logout').disabled=false}
+};
+if(new URL(location.href).searchParams.has('auth_error')){openDialog('account-dialog');$('account-status').textContent=t('Не удалось войти через Google. Повторите вход или проверьте приглашение.');const url=new URL(location.href);url.searchParams.delete('auth_error');window.history.replaceState(null,'',url.pathname+url.search+url.hash)}
 const narrator=new CloudNarrator({
  onState:s=>{document.body.classList.toggle('playing',s==='playing');$('player-pause').textContent=['playing','loading'].includes(s)?'Ⅱ':'▶';$('player-pause').setAttribute('aria-label',['playing','loading'].includes(s)?t('Пауза'):t('Слушать'));$('story-play').textContent=['playing','loading'].includes(s)?t('Ⅱ Пауза'):s==='paused'?t('▶ Продолжить'):t('▶ Слушать рассказ');$('player-state').textContent=s==='loading'?t('Загружаем голос…'):s==='playing'?t('Слушаем · ')+(state.current?.title||t('История')):s==='paused'?t('На паузе'):s==='finished'?t('Рассказ завершён'):t('Готово к прослушиванию')},
  onBlock:block=>{state.current=block;document.querySelectorAll('.story-block').forEach(el=>el.classList.toggle('active',el.dataset.block===block.id))},
@@ -91,7 +113,7 @@ async function selectPlace(place){
  }catch(e){if(e.name==='AbortError')return;if(placeEpoch.isCurrent(token))message(safeError(e,'Не удалось загрузить рассказ. Попробуйте другое место.'))}
 }
 function showPlayer(){if(!state.selected)return;$('player').hidden=false;document.body.classList.add('has-player')}
-function play(){if(!state.selected||!canListen(state.selected))return;if(['playing','loading'].includes(narrator.state)){narrator.pause();return}if(narrator.state==='paused'){narrator.resume();return}state.answer=false;let queue=buildQueue(state.selected,state.depth,state.heard);if(!queue.length){state.heard=[];queue=buildQueue(state.selected,state.depth,[]);renderText()}message('');showPlayer();narrator.play(queue)}
+function play(){if(!state.user){openDialog('account-dialog');loadAccount();return;}if(!state.selected||!canListen(state.selected))return;if(['playing','loading'].includes(narrator.state)){narrator.pause();return}if(narrator.state==='paused'){narrator.resume();return}state.answer=false;let queue=buildQueue(state.selected,state.depth,state.heard);if(!queue.length){state.heard=[];queue=buildQueue(state.selected,state.depth,[]);renderText()}message('');showPlayer();narrator.play(queue)}
 function setDepth(depth){if(!state.selected||!availableDepths(state.selected.blocks).includes(depth))return;answerEpoch.next();answerController?.abort();const playing=['playing','loading'].includes(narrator.state);const wasPaused=narrator.state==='paused';narrator.stop();state.answer=false;state.depth=depth;state.current=null;renderText();const queue=buildQueue(state.selected,depth,state.heard);if(!queue.length){message(t('Главное вы уже услышали. Можно выбрать «Подробнее» или начать сначала.'));return}message(wasPaused?t('Глубина изменена. Нажмите «Слушать рассказ», когда будете готовы.'):'');if(playing&&canListen(state.selected)){showPlayer();narrator.play(queue)}}
 document.querySelectorAll('[data-depth]').forEach(b=>b.onclick=()=>setDepth(+b.dataset.depth));$('story-play').onclick=play;$('player-pause').onclick=play;
 $('story-restart').onclick=()=>{if(!state.selected)return;narrator.stop();state.heard=[];state.current=null;renderText();play()};
@@ -99,7 +121,7 @@ $('story-save').onclick=()=>{if(state.selected)toggleSave(state.selected)};
 $('reopen-story').onclick=()=>openDialog('story-dialog');
 $('player-stop').onclick=()=>{narrator.stop();state.current=null;$('player').hidden=true;document.body.classList.remove('has-player')};
 $('rate').oninput=e=>{narrator.rate=Number(e.target.value);$('rate-value').textContent=narrator.rate.toFixed(2).replace(/0$/,'')+'×'};
-function aiRequest(payload,signal){return requestGuide({...payload,language:LANGUAGE},{signal})}
+async function aiRequest(payload,signal){try{return await requestGuide({...payload,language:LANGUAGE},{signal})}catch(e){if(e.status===401){state.user=null;state.ai=false;state.vision=false;openDialog('account-dialog');loadAccount()}throw e}}
 async function ask(question,prepared){
  if(!state.selected)return;const current=state.selected;const token=answerEpoch.next();answerController?.abort();answerController=new AbortController();narrator.stop();state.answer=true;$('answer').hidden=false;$('answer').textContent=t('Готовим ответ…');$('continue-story').hidden=false;
  try{const text=prepared||(await aiRequest({action:'question',question,place:{title:current.title,source:current.source,text:current.sourceText||current.blocks.map(b=>b.text).join('\n')},heard:current.blocks.filter(b=>state.heard.includes(b.id)).map(b=>b.text)},answerController.signal)).text;
@@ -150,7 +172,7 @@ $('identify-photo').onclick=async()=>{
  finally{if(photoEpoch.isCurrent(token))$('identify-photo').disabled=!state.vision||!state.photo}
 };
 $('photo-dialog').addEventListener('close',()=>{cancelPhoto();$('photo-note').textContent=t('Фото отправится только после нажатия «Узнать».')});
-async function config(){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),8000);try{const r=await fetch('/api/config',{headers:{Accept:'application/json'},signal:controller.signal});if(!r.ok||!r.headers.get('content-type')?.includes('application/json'))return;const c=await r.json();state.ai=c.ai===true;state.vision=c.vision===true;narrator.cloud=c.tts===true;if(narrator.cloud){$('voice-description').textContent=t('Облачный голос Yandex SpeechKit. Текст отправляется на озвучку при нажатии «Слушать». Готовые фрагменты временно сохраняются на сервере.');$('rate-description').textContent=t('Темп меняется сразу, без повторного синтеза.');}if(state.ai){$('mode-note').querySelector('p').textContent=t('ИИ-гид подключён: рассказы по источникам, вопросы и распознавание фото. Подробность можно менять во время прослушивания.');$('about-ai-title').textContent=t('ИИ-гид подключён');$('about-ai-description').textContent=t('Рассказы и ответы создаёт ИИ по переданному источнику. Фото помогает предположить название места. ')+(narrator.cloud?t('Озвучка — Yandex SpeechKit.'):t('Озвучка использует голос вашего устройства.'));$('photo-note').textContent=t('Выберите фото. Оно отправится только после нажатия «Узнать».');$('identify-photo').disabled=!state.vision||!state.photo;if(state.selected)renderStory();translateDiscovery(discoveryToken);translateLibrary()}}catch{/* Static hosting intentionally has no AI server. */}finally{clearTimeout(timer)}}
+async function config(){await loadAccount();const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),8000);try{const r=await fetch('/api/config',{headers:{Accept:'application/json'},signal:controller.signal});if(!r.ok||!r.headers.get('content-type')?.includes('application/json'))return;const c=await r.json();state.ai=c.ai===true&&!!state.user;state.vision=c.vision===true&&!!state.user;narrator.cloud=c.tts===true&&!!state.user;if(!state.user){$('mode-note').querySelector('p').textContent=t('Поиск доступен без входа. ИИ-рассказы, вопросы и облачная озвучка — после входа через Google.');$('photo-note').textContent=t('Войдите через Google, чтобы пользоваться ИИ.');}if(narrator.cloud){$('voice-description').textContent=t('Облачный голос Yandex SpeechKit. Текст отправляется на озвучку при нажатии «Слушать». Готовые фрагменты временно сохраняются на сервере.');$('rate-description').textContent=t('Темп меняется сразу, без повторного синтеза.');}if(state.ai){$('mode-note').querySelector('p').textContent=t('ИИ-гид подключён: рассказы по источникам, вопросы и распознавание фото. Подробность можно менять во время прослушивания.');$('about-ai-title').textContent=t('ИИ-гид подключён');$('about-ai-description').textContent=t('Рассказы и ответы создаёт ИИ по переданному источнику. Фото помогает предположить название места. ')+(narrator.cloud?t('Озвучка — Yandex SpeechKit.'):t('Озвучка использует голос вашего устройства.'));$('photo-note').textContent=t('Выберите фото. Оно отправится только после нажатия «Узнать».');$('identify-photo').disabled=!state.vision||!state.photo;if(state.selected)renderStory();translateDiscovery(discoveryToken);translateLibrary()}}catch{/* Static hosting intentionally has no AI server. */}finally{clearTimeout(timer)}}
 const configReady=config();
 renderPlaces();updateSaveButton();
 window.addEventListener('pagehide',()=>{narrator.stop();recognition?.abort();placeController?.abort();answerController?.abort();searchController?.abort();photoController?.abort();if(state.photoUrl)URL.revokeObjectURL(state.photoUrl)});

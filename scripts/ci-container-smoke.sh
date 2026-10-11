@@ -36,7 +36,9 @@ curl --fail --silent --show-error --max-time 10 http://127.0.0.1:18080/ > "$smok
 test -s "$smoke_dir/response.html"
 docker compose -p "$compose_project" exec -T waystory node --input-type=module <<'JS'
 import assert from 'node:assert/strict';
-import {existsSync} from 'node:fs';
+import {existsSync,writeFileSync,readFileSync} from 'node:fs';
+writeFileSync('/app/data/smoke','persistent');
+assert.equal(readFileSync('/app/data/smoke','utf8'),'persistent');
 
 assert.notEqual(process.getuid(), 0, 'The container must run without root');
 assert.equal(existsSync('/app/.env'), false, '.env must not be included in the image');

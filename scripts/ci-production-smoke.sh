@@ -14,7 +14,7 @@ cleanup() {
     docker logs "$project-proxy" || true
   fi
   docker rm -f "$project-proxy" >/dev/null 2>&1 || true
-  compose down >/dev/null 2>&1 || true
+  compose down --volumes >/dev/null 2>&1 || true
   docker network rm "$project" >/dev/null 2>&1 || true
   rm -rf -- "$fixture"
   exit "$result"

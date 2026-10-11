@@ -10,6 +10,8 @@ COPY --chown=node:node package.json ./
 COPY --chown=node:node server/ ./server/
 COPY --chown=node:node dist/ ./dist/
 
+RUN mkdir -p /app/data && chown node:node /app/data && chmod 700 /app/data
+
 USER node
 EXPOSE 5173
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
