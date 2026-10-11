@@ -48,7 +48,13 @@ sudo env WAYSTORY_IMAGE="$current_image" docker compose \
 
 Open the site, choose Sign in → Continue with Google. Invited account should see its email and quotas. Guest requests to `/api/guide` and `/api/speech` return 401 when configured (503 before setup); logout invalidates the session. Google tokens stay server-side and are discarded after identity lookup.
 
-## Limits and boundaries
+## Unlimited requests and usage tracking
+
+By default `AUTHENTICATED_REQUESTS_UNLIMITED=true`: signed-in invited users have no application-level request count limit. This overrides all user/global daily and provider hourly ceilings, including values already present in `.env`. Usage counters remain for statistics. Set the flag to `false` and recreate the container to restore the configured ceilings. Anonymous paid API access stays blocked. Concurrency, timeouts, input limits and upstream provider quotas still apply.
+
+The following quota behavior applies only with `AUTHENTICATED_REQUESTS_UNLIMITED=false`.
+
+## Optional quota mode
 
 Seven-day absolute sessions and daily counters are stored in SQLite. Quotas reset at midnight UTC, survive restart/logout and count requests even if a provider fails or a response is cached. Global counters apply across all invited users. Existing provider hourly/concurrency limits still apply. These are request ceilings, not a precise financial budget or DDoS protection. Removing an email from the allowlist and recreating the container blocks its existing sessions as well as new logins.
 

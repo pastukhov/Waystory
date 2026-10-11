@@ -111,7 +111,7 @@ export function createGuide({env=process.env,fetchFn=fetch,now=Date.now}={}){
    const entry=cache.get(key);if(now()-entry.time<24*3600000)return entry.value;cache.delete(key);
   }
   if(now()-windowStart>=3600000){calls=0;windowStart=now()}
-  if(calls>=hourLimit)throw new GuideError(429,'Достигнут часовой лимит ИИ. Попробуйте позже; сохранённые рассказы доступны.');
+  if(env.AUTHENTICATED_REQUESTS_UNLIMITED==='false'&&calls>=hourLimit)throw new GuideError(429,'Достигнут часовой лимит ИИ. Попробуйте позже; сохранённые рассказы доступны.');
   if(active>=2)throw new GuideError(429,'Гид сейчас занят. Повторите запрос через несколько секунд.');
   calls++;active++;
   const deadline=AbortSignal.timeout(timeout);
