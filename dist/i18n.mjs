@@ -288,13 +288,14 @@ export function localizeDocument(doc=document){
 }
 export function durationLabel(blocks,depth,language=LANGUAGE){
   const words=blocks.filter(b=>b.depth<=depth).reduce((n,b)=>n+b.text.trim().split(/\s+/).filter(Boolean).length,0);
+  if(!words)return '';
   const seconds=Math.max(1,Math.round(words/140*60));
   return seconds<60?`≈ ${seconds} ${language==='ru'?'сек':'sec'}`:`≈ ${Math.floor(seconds/60)} ${language==='ru'?'мин':'min'}${seconds%60?' '+seconds%60+' '+(language==='ru'?'сек':'sec'):''}`;
 }
 export function availableDepths(blocks){return [0,1,2].filter(depth=>blocks.some(b=>b.depth===depth))}
 export function clampDepth(blocks,depth){const available=availableDepths(blocks);return available.includes(depth)?depth:(available.filter(d=>d<=depth).at(-1)??available[0]??0)}
 export function sourceLanguage(place){return place.aiGenerated?place.storyLanguage:place.lang||(/^https:\/\/([a-z]+)\.wikipedia\.org/.exec(place.source||'')?.[1])||(place.demo?'ru':null)}
-export function canListen(place,language=LANGUAGE){return !!place.blocks?.length&&sourceLanguage(place)===language}
+export function canListen(place,language=LANGUAGE){return !!place.blocks?.some(b=>b.text?.trim())&&sourceLanguage(place)===language}
 export function safeError(error,fallback){return t(messages[error?.message?.trim()]?error.message:fallback)}
 
 export function speechError(message,language=LANGUAGE){
@@ -303,3 +304,4 @@ export function speechError(message,language=LANGUAGE){
 }
 
 export function cardMetadataKey(place,language=LANGUAGE){return JSON.stringify([language,place.id,place.originalTitle||place.title,place.originalSubtitle??place.subtitle??''])}
+

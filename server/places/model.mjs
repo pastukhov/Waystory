@@ -15,18 +15,25 @@ export function normalizePlace(raw){
  if(raw.names.native){if(!string(raw.names.native.text)||!string(raw.names.native.sourceId))throw new Error('Invalid native name');names.native={text:raw.names.native.text,sourceId:raw.names.native.sourceId,...(string(raw.names.native.language,20)?{language:raw.names.native.language}:{})}}
  if(raw.coordinates!=null&&!validCoordinates(raw.coordinates))throw new Error('Invalid coordinates');
  const result={id:raw.id,refs,names,coordinates:raw.coordinates?{...raw.coordinates}:null,category:string(raw.category,120)?raw.category:'place',sourceIds:[...new Set(raw.sourceIds)]};
+ result.nameSources=Object.fromEntries(Object.keys(names).map(key=>[key,string(raw.nameSources?.[key])?raw.nameSources[key]:key==='native'?names.native.sourceId:raw.sourceIds[0]||raw.id]));
+ if(raw.coordinateSources?.length){if(!raw.coordinateSources.every(validCoordinates))throw new Error('Invalid coordinate sources');result.coordinateSources=raw.coordinateSources.slice(0,50).map(c=>({...c}))}
  if(raw.coordinateConflict?.length){if(!raw.coordinateConflict.every(validCoordinates))throw new Error('Invalid coordinate conflict');result.coordinateConflict=raw.coordinateConflict.slice(0,8).map(c=>({...c}))}
  if(Array.isArray(raw.areaRefs))result.areaRefs=raw.areaRefs.filter(r=>r?.provider==='wikidata'&&/^Q[1-9]\d*$/.test(r.id)).slice(0,2);
  return result;
 }
 function meters(a,b){const r=Math.PI/180,x=Math.sin((b.lat-a.lat)*r/2)**2+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin((b.lon-a.lon)*r/2)**2;return 12742000*Math.atan2(Math.sqrt(Math.min(1,x)),Math.sqrt(Math.max(0,1-x)))}
 function combine(a,b){
- let coordinates=a.coordinates||b.coordinates;
- // A linked geometry centre is not an entrance, even when another provider calls it a point.
- if(a.coordinates&&b.coordinates&&meters(a.coordinates,b.coordinates)<=250){const centre=[a.coordinates,b.coordinates].find(c=>c.kind==='centroid');if(centre)coordinates=centre}
- const conflict=[...(a.coordinateConflict||[]),...(b.coordinateConflict||[])];
- if(a.coordinates&&b.coordinates&&meters(a.coordinates,b.coordinates)>250)conflict.push(a.coordinates,b.coordinates);
- return {...a,category:a.category==='place'?b.category:a.category,refs:[...new Map([...a.refs,...b.refs].map(r=>[refKey(r),r])).values()],names:{...b.names,...a.names},coordinates,sourceIds:[...new Set([...a.sourceIds,...b.sourceIds])],...(b.areaRefs||a.areaRefs?{areaRefs:[...new Map([...(a.areaRefs||[]),...(b.areaRefs||[])].map(r=>[refKey(r),r])).values()].slice(0,2)}:{}),...(conflict.length?{coordinateConflict:[...new Map(conflict.map(c=>[JSON.stringify(c),c])).values()].slice(0,8)}:{})};
+ // Keep the latest observation per explicit source identity, not per position.
+ // Persist non-conflicting observations too, so future corrections can be compared.
+ const observations=[...(a.coordinateSources||[]),...(a.coordinateConflict||[]),...(a.coordinates?[a.coordinates]:[]),...(b.coordinateSources||[]),...(b.coordinateConflict||[]),...(b.coordinates?[b.coordinates]:[])];
+ const coordinateSources=[...new Map(observations.map(c=>[c.sourceId,c])).values()];
+ let coordinates=coordinateSources.find(c=>c.sourceId===(a.coordinates||b.coordinates)?.sourceId)||null;
+ if(coordinates){const centre=coordinateSources.find(c=>c.kind==='centroid'&&meters(coordinates,c)<=250);if(centre)coordinates=centre}
+ const conflict=coordinateSources.filter(c=>coordinateSources.some(other=>meters(c,other)>250));
+ const names={...a.names},nameSources={...a.nameSources};
+ for(const [key,value] of Object.entries(b.names))if(!names[key]||nameSources[key]===b.nameSources[key]){names[key]=value;nameSources[key]=b.nameSources[key]}
+ const {coordinateConflict:oldConflict,...base}=a;
+ return {...base,category:a.category==='place'?b.category:a.category,refs:[...new Map([...a.refs,...b.refs].map(r=>[refKey(r),r])).values()],names,nameSources,coordinates,coordinateSources,sourceIds:[...new Set([...a.sourceIds,...b.sourceIds])],...(b.areaRefs||a.areaRefs?{areaRefs:[...new Map([...(a.areaRefs||[]),...(b.areaRefs||[])].map(r=>[refKey(r),r])).values()].slice(0,2)}:{}),...(conflict.length?{coordinateConflict:conflict.slice(0,8)}:{})};
 }
 export function mergePlaces(records){
  const groups=[];
@@ -36,3 +43,4 @@ export function mergePlaces(records){
  }
  return groups;
 }
+
