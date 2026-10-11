@@ -6,3 +6,14 @@ test('fixed speech probes redact credentials from provider errors',async()=>{
  const savedFetch=globalThis.fetch,savedLog=console.log,savedArg=process.argv[2],savedExit=process.exitCode,savedKey=process.env.YANDEX_TTS_API_KEY;const lines=[];
  try{process.argv[2]='speech-test';process.env.YANDEX_TTS_API_KEY='test-diagnostic-secret';globalThis.fetch=async(url,options)=>{assert.match(url,/tts:synthesize/);assert.ok(['Проверка голоса.','Voice test.'].includes(new URLSearchParams(options.body).get('text')));return new Response(JSON.stringify({error_message:'Invalid parameter test-diagnostic-secret'}),{status:400})};console.log=s=>lines.push(s);await import('../scripts/ops-probe.mjs');assert.equal(lines.length,2);assert.ok(lines.every(s=>JSON.parse(s).status===400));assert.equal(lines.join('').includes('test-diagnostic-secret'),false);assert.match(lines[0],/redacted/)}finally{globalThis.fetch=savedFetch;console.log=savedLog;process.argv[2]=savedArg;process.exitCode=savedExit;if(savedKey===undefined)delete process.env.YANDEX_TTS_API_KEY;else process.env.YANDEX_TTS_API_KEY=savedKey}
 });
+test('AI diagnostics exercise the real story parser with a fixed source',async()=>{
+ const old={fetch:globalThis.fetch,log:console.log,arg:process.argv[2],exit:process.exitCode,key:process.env.YANDEX_API_KEY,folder:process.env.YANDEX_FOLDER_ID};const lines=[],requests=[];
+ try{
+  process.argv[2]='ai-test';process.env.YANDEX_API_KEY='diagnostic-ai-secret';process.env.YANDEX_FOLDER_ID='test-folder';
+  globalThis.fetch=async(url,options)=>{const body=JSON.parse(options.body);requests.push(body);if(body.response_format)return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({title:'Аунесис',blocks:[{title:'Главное',depth:0,text:'Аунесис был прибрежным городом и портом Гамаксии.'}]})}}]});return Response.json({choices:[{message:{content:'OK'}}]})};
+  console.log=s=>lines.push(JSON.parse(s));await import('../scripts/ops-probe.mjs?story-test');
+  assert.equal(requests.length,2);assert.equal(requests[1].response_format.json_schema.name,'waystory_story');assert.match(requests[1].messages[1].content,/Aunesis/);
+  assert.ok(lines.some(x=>x.probe==='ai-story'&&x.valid===true&&x.language==='ru'));
+  assert.equal(JSON.stringify(lines).includes('diagnostic-ai-secret'),false);
+ }finally{globalThis.fetch=old.fetch;console.log=old.log;process.argv[2]=old.arg;process.exitCode=old.exit;for(const [name,value] of [['YANDEX_API_KEY',old.key],['YANDEX_FOLDER_ID',old.folder]])if(value===undefined)delete process.env[name];else process.env[name]=value}
+});
