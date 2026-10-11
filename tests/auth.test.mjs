@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createAuth} from '../server/auth.mjs';
-const env={GOOGLE_CLIENT_ID:'client',GOOGLE_CLIENT_SECRET:'secret',APP_ORIGIN:'https://ws.example',GOOGLE_ALLOWED_EMAILS:'pilot@example.com'};
+const env={AUTHENTICATED_REQUESTS_UNLIMITED:'false',GOOGLE_CLIENT_ID:'client',GOOGLE_CLIENT_SECRET:'secret',APP_ORIGIN:'https://ws.example',GOOGLE_ALLOWED_EMAILS:'pilot@example.com'};
 function setup(extra={},identity={sub:'google-1',email:'pilot@example.com',email_verified:true,name:'Pilot'}){
  let time=Date.now(),calls=[];
  const auth=createAuth({env:{...env,...extra},dbPath:':memory:',now:()=>time,fetchFn:async(url,options)=>{calls.push({url,options});return new Response(JSON.stringify(url.includes('/token')?{access_token:'access'}:identity))}});
@@ -24,3 +24,4 @@ test('expired OAuth state and bad provider response fail closed',async()=>{const
 test('production origin cannot be insecure or contain a redirect path',()=>{for(const APP_ORIGIN of ['http://ws.example','https://ws.example/path','https://ws.example/'])assert.throws(()=>createAuth({env:{...env,NODE_ENV:'production',APP_ORIGIN},dbPath:':memory:'}))});
 test('empty invitation list denies every identity',async()=>{const {auth}=setup({GOOGLE_ALLOWED_EMAILS:''});try{await assert.rejects(login(auth))}finally{auth.close()}});
 test('removing invitation rejects an existing persistent session',async()=>{const {mkdtempSync,rmSync}=await import('node:fs');const {tmpdir}=await import('node:os');const {join}=await import('node:path');const dir=mkdtempSync(join(tmpdir(),'waystory-revoke-')),dbPath=join(dir,'auth.sqlite');let auth=createAuth({env,dbPath,fetchFn:async url=>new Response(JSON.stringify(url.includes('/token')?{access_token:'access'}:{sub:'existing',email:'pilot@example.com',email_verified:true}))});try{const {cookie}=await login(auth);auth.close();auth=createAuth({env:{...env,GOOGLE_ALLOWED_EMAILS:''},dbPath});assert.equal(auth.session(cookie),null)}finally{auth.close();rmSync(dir,{recursive:true,force:true})}});
+test('authenticated users have no daily ceiling by default, while usage is tracked',async()=>{const {auth}=setup({AUTHENTICATED_REQUESTS_UNLIMITED:undefined,AI_USER_REQUESTS_PER_DAY:'1',AI_REQUESTS_PER_DAY:'1',TTS_USER_REQUESTS_PER_DAY:'1',TTS_REQUESTS_PER_DAY:'1'});try{const {cookie}=await login(auth),user=auth.session(cookie);for(let i=0;i<3;i++){auth.consume(user,'ai');auth.consume(user,'tts')}assert.deepEqual(auth.usage(user).ai,{used:3,limit:null,remaining:null});assert.deepEqual(auth.usage(user).tts,{used:3,limit:null,remaining:null})}finally{auth.close()}});

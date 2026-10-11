@@ -20,7 +20,7 @@ export function createSpeech({env=process.env,fetchFn=fetch,now=Date.now}={}){
   if(cached&&now()-cached.time<86400000)return cached.audio;
   if(cached){bytes-=cached.audio.length;cache.delete(id)}
   if(now()-start>=3600000){start=now();calls=0}
-  if(calls>=limit||active>=2)throw new GuideError(429,'Озвучка временно занята или достигнут часовой лимит. Попробуйте позже.');
+  if((env.AUTHENTICATED_REQUESTS_UNLIMITED==='false'&&calls>=limit)||active>=2)throw new GuideError(429,'Озвучка временно занята или достигнут часовой лимит. Попробуйте позже.');
   signal?.throwIfAborted();calls++;active++;
   try{
    const response=await fetchFn('https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize',{method:'POST',headers:{Authorization:'Api-Key '+key,'Content-Type':'application/x-www-form-urlencoded','x-data-logging-enabled':'false'},body,signal:AbortSignal.any([AbortSignal.timeout(30000),...(signal?[signal]:[])])});

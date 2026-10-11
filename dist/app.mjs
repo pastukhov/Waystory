@@ -62,7 +62,7 @@ function renderAccount(data){
  $('account-status').textContent=data.user?data.user.name||t('Аккаунт'):t(authFailed?'Не удалось войти через Google. Повторите вход или проверьте приглашение.':data.enabled?'Пилот доступен по приглашению. Войдите разрешённым Google-аккаунтом.':'Вход через Google пока не настроен.');
  $('google-login').hidden=!!data.user||!data.enabled;$('account-logout').hidden=!data.user;
  $('account-usage').replaceChildren();
- if(data.user&&data.usage){for(const [kind,label] of [['ai','Запросы ИИ сегодня'],['tts','Фрагменты озвучки сегодня']]){const p=document.createElement('p');p.textContent=t(label)+': '+data.usage[kind].used+' / '+data.usage[kind].limit;$('account-usage').append(p)}const note=document.createElement('p');note.className='small muted';note.textContent=t('Лимиты обновляются в полночь UTC. Неудачные запросы тоже учитываются.');$('account-usage').append(note)}
+ if(data.user&&data.usage){for(const [kind,label] of [['ai','Запросы ИИ сегодня'],['tts','Фрагменты озвучки сегодня']]){const p=document.createElement('p');p.textContent=t(label)+': '+data.usage[kind].used+' / '+(data.usage[kind].limit===null?t('Безлимит'):data.usage[kind].limit);$('account-usage').append(p)}const note=document.createElement('p');note.className='small muted';note.textContent=t(data.usage.ai.limit===null&&data.usage.tts.limit===null?'Количество запросов не ограничено. Статистика — за сегодня, по UTC.':'Лимиты обновляются в полночь UTC. Неудачные запросы тоже учитываются.');$('account-usage').append(note)}
 }
 async function loadAccount(){
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);

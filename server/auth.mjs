@@ -17,6 +17,7 @@ export function createAuth({env=process.env,dbPath,fetchFn=fetch,now=Date.now}={
  const cookie=(name,value,seconds)=>`${name}=${value}; Path=/; HttpOnly; ${secure?'Secure; ':''}SameSite=Lax; Max-Age=${seconds}`;
  const allowed=new Set((env.GOOGLE_ALLOWED_EMAILS||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean));
  const permits=email=>allowed.has(email.toLowerCase());
+ const unlimited=env.AUTHENTICATED_REQUESTS_UNLIMITED!=='false';
  const limits={ai:{user:limit(env,'AI_USER_REQUESTS_PER_DAY',30),global:limit(env,'AI_REQUESTS_PER_DAY',300)},tts:{user:limit(env,'TTS_USER_REQUESTS_PER_DAY',100),global:limit(env,'TTS_REQUESTS_PER_DAY',1000)}};
  const file=dbPath||env.AUTH_DB_PATH||'data/waystory.sqlite';
  if(file!==':memory:')mkdirSync(dirname(file),{recursive:true,mode:0o700});
@@ -30,7 +31,7 @@ export function createAuth({env=process.env,dbPath,fetchFn=fetch,now=Date.now}={
  const failure=()=>new GuideError(401,'Не удалось войти через Google. Повторите вход или проверьте приглашение.');
  function session(header){const raw=cookieValue(header,sessionName);if(!raw)return null;const row=db.prepare('SELECT users.* FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.hash=? AND sessions.expires>?').get(hash(raw),now());return row&&permits(row.email)?row:null}
  function count(day,subject,kind){return db.prepare('SELECT count FROM usage WHERE day=? AND subject=? AND kind=?').get(day,subject,kind)?.count||0}
- function usage(user){const day=new Date(now()).toISOString().slice(0,10);return Object.fromEntries(Object.entries(limits).map(([kind,l])=>[kind,{used:count(day,user.id,kind),limit:l.user,remaining:Math.max(0,l.user-count(day,user.id,kind))}]))}
+ function usage(user){const day=new Date(now()).toISOString().slice(0,10);return Object.fromEntries(Object.entries(limits).map(([kind,l])=>[kind,{used:count(day,user.id,kind),limit:unlimited?null:l.user,remaining:unlimited?null:Math.max(0,l.user-count(day,user.id,kind))}]))}
  return {enabled:true,origin:origin.origin,session,usage,close:()=>db.close(),
   start(){
    db.prepare('DELETE FROM oauth WHERE expires<=?').run(now());db.prepare('DELETE FROM sessions WHERE expires<=?').run(now());
@@ -63,7 +64,7 @@ export function createAuth({env=process.env,dbPath,fetchFn=fetch,now=Date.now}={
    const day=new Date(now()).toISOString().slice(0,10),l=limits[kind];
    db.exec('BEGIN IMMEDIATE');
    try{
-    if(count(day,user.id,kind)>=l.user||count(day,'*',kind)>=l.global)throw new GuideError(429,'Дневной лимит исчерпан. Попробуйте завтра.');
+    if(!unlimited&&(count(day,user.id,kind)>=l.user||count(day,'*',kind)>=l.global))throw new GuideError(429,'Дневной лимит исчерпан. Попробуйте завтра.');
     const stmt=db.prepare('INSERT INTO usage VALUES (?,?,?,1) ON CONFLICT(day,subject,kind) DO UPDATE SET count=count+1');
     stmt.run(day,user.id,kind);stmt.run(day,'*',kind);db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e}
