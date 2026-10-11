@@ -6,3 +6,4 @@ test('coordinate disagreement is preserved without averaging',()=>{const [r]=mer
 test('ref validation rejects injection and non-positive identifiers',()=>{assert.throws(()=>refKey({provider:'wikidata',id:'Q1;drop'}));assert.throws(()=>refKey({provider:'osm',kind:'node',id:-1}));assert.throws(()=>normalizePlace({...p('wd:Q1','Q1'),coordinates:{lat:99,lon:0,sourceId:'s',kind:'point'}}))});
 
 test('OSM nodes and relations stay distinct without references',()=>{assert.equal(mergePlaces([p('osm:node:7','Q7'),p('osm:relation:7','Q8')]).length,2)});
+test('enrichment keeps populated administrative references',()=>{const [merged]=mergePlaces([{...p('wd:Q1','Q1'),areaRefs:[]},{...p('osm:node:2','Q1'),areaRefs:[{provider:'wikidata',id:'Q2'}]}]);assert.equal(merged.areaRefs[0].id,'Q2')});

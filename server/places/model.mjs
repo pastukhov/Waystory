@@ -24,7 +24,7 @@ function combine(a,b){
  const coordinates=a.coordinates||b.coordinates;
  const conflict=[...(a.coordinateConflict||[]),...(b.coordinateConflict||[])];
  if(a.coordinates&&b.coordinates&&meters(a.coordinates,b.coordinates)>250)conflict.push(a.coordinates,b.coordinates);
- return {...a,refs:[...new Map([...a.refs,...b.refs].map(r=>[refKey(r),r])).values()],names:{...b.names,...a.names},coordinates,sourceIds:[...new Set([...a.sourceIds,...b.sourceIds])],...(b.areaRefs||a.areaRefs?{areaRefs:a.areaRefs||b.areaRefs}:{}),...(conflict.length?{coordinateConflict:[...new Map(conflict.map(c=>[JSON.stringify(c),c])).values()].slice(0,8)}:{})};
+ return {...a,refs:[...new Map([...a.refs,...b.refs].map(r=>[refKey(r),r])).values()],names:{...b.names,...a.names},coordinates,sourceIds:[...new Set([...a.sourceIds,...b.sourceIds])],...(b.areaRefs||a.areaRefs?{areaRefs:[...new Map([...(a.areaRefs||[]),...(b.areaRefs||[])].map(r=>[refKey(r),r])).values()].slice(0,2)}:{}),...(conflict.length?{coordinateConflict:[...new Map(conflict.map(c=>[JSON.stringify(c),c])).values()].slice(0,8)}:{})};
 }
 export function mergePlaces(records){
  const groups=[];

@@ -1,0 +1,11 @@
+const hosts=['ru.wikipedia.org','en.wikipedia.org','tr.wikipedia.org','ru.wikivoyage.org','en.wikivoyage.org','tr.wikivoyage.org','www.wikidata.org'];
+export function createSourceHttp({fetchFn=fetch,osmEndpoint='https://overpass-api.de/api/interpreter'}={}){
+ const osm=new URL(osmEndpoint);if(osm.protocol!=='https:'||osm.username||osm.password)throw Error('Invalid OSM endpoint');let active=0;const queue=[];
+ async function acquire(signal){signal?.throwIfAborted();if(active<4){active++;return}await new Promise((resolve,reject)=>{const item={resolve:()=>{signal?.removeEventListener('abort',abort);active++;resolve()},reject};const abort=()=>{const i=queue.indexOf(item);if(i>=0)queue.splice(i,1);reject(signal.reason)};signal?.addEventListener('abort',abort,{once:true});queue.push(item)})}
+ return async function sourceFetch(value,{signal,maxBytes=2*1024*1024,timeoutMs=10000,method='GET',body}={}){
+  const url=new URL(value);if(url.protocol!=='https:'||url.username||url.password||!((hosts.includes(url.hostname)&&url.pathname==='/w/api.php')||url.href===osm.href))throw Error('Source URL prohibited');
+  const deadline=AbortSignal.timeout(timeoutMs),combined=signal?AbortSignal.any([signal,deadline]):deadline;
+  await acquire(combined);try{combined.throwIfAborted();const res=await fetchFn(url.href,{method,body,signal:combined,redirect:'error',headers:{Accept:'application/json','User-Agent':'Waystory/1.0 (https://ws.nayg.ru)',...(body?{'Content-Type':'application/x-www-form-urlencoded'}:{})}});if(!res.ok||res.redirected||Number(res.headers.get('content-length'))>maxBytes)throw Error('Source unavailable');let bytes=0;const reader=res.body?.getReader(),parts=[];if(!reader)throw Error('Empty source response');try{while(true){combined.throwIfAborted();const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>maxBytes)throw Error('Source response too large');parts.push(value)}}finally{await reader.cancel().catch(()=>{});}const json=JSON.parse(Buffer.concat(parts).toString('utf8'));if(json.error)throw Error('Source API error');return json}finally{active--;queue.shift()?.resolve()}
+ }
+}
+export function apiUrl(host,params){const url=new URL('https://'+host+'/w/api.php');for(const [k,v] of Object.entries({format:'json',...params}))url.searchParams.set(k,String(v));return url.href}
