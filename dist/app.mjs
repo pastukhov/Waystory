@@ -1,6 +1,5 @@
 import {LANGUAGE,LANGUAGE_TAG,STORY_VERSION,canReuseStory} from './language.mjs';
 import {t,localizeDocument,durationLabel,availableDepths,clampDepth,sourceLanguage,canListen,safeError,speechError,cardMetadataKey} from './i18n.mjs';
-import {PLACES} from './data.mjs';
 import {illustration} from './art.mjs';
 import {buildQueue,restoreLibrary,saveEntry,validateImage,safeSourceUrl,createEpoch} from './core.mjs';
 import {CloudNarrator} from './speech.mjs';
@@ -9,8 +8,7 @@ import {searchPlaces,nearbyPlaces,loadPlace} from './wiki.mjs';
 
 localizeDocument();
 const $=id=>document.getElementById(id);
-const demoPlaces=PLACES.map(p=>({...p,lang:'ru',originalTitle:p.title}));
-const state={tab:'explore',places:demoPlaces,selected:null,heard:[],depth:1,current:null,ai:false,vision:false,answer:false,photo:null,photoUrl:null};
+const state={tab:'explore',places:[],selected:null,heard:[],depth:1,current:null,ai:false,vision:false,answer:false,photo:null,photoUrl:null};
 const placeEpoch=createEpoch(),searchEpoch=createEpoch(),answerEpoch=createEpoch(),photoEpoch=createEpoch();
 let discoveryToken=0;
 const libraryMetadata=new Map(),libraryAttempts=new Set();
@@ -46,7 +44,7 @@ function card(place){
  c.querySelector('.card-listen').onclick=()=>selectPlace(place);
  return c;
 }
-function renderPlaces(){const grid=$('places');grid.replaceChildren(...state.places.map(card));if(!state.places.length){const p=document.createElement('p');p.className='muted';p.textContent=state.emptyNearby?t('В доступных статьях Википедии в радиусе 10 км мест не найдено. Попробуйте поиск по названию или сфотографируйте объект.'):t('Ничего не нашлось. Попробуйте уточнить название или выбрать другой город.');grid.append(p)}}
+function renderPlaces(){const grid=$('places');grid.replaceChildren(...state.places.map(card));if(!state.places.length&&!$('reset-places').hidden){const p=document.createElement('p');p.className='muted';p.textContent=state.emptyNearby?t('В доступных статьях Википедии в радиусе 10 км мест не найдено. Попробуйте поиск по названию или сфотографируйте объект.'):t('Ничего не нашлось. Попробуйте уточнить название или выбрать другой город.');grid.append(p)}}
 function toggleSave(place){const existing=saved.some(p=>p.id===place.id);saved=existing?saved.filter(p=>p.id!==place.id):saveEntry(saved,place);persist('waystory-saved',saved);renderPlaces();renderLibrary();updateSaveButton();toast(existing?t('Место убрано из сохранённого'):t('Место сохранено на этом устройстве'))}
 function updateSaveButton(){const yes=saved.some(p=>p.id===state.selected?.id);$('story-save').textContent=yes?'♥':'♡';$('story-save').classList.toggle('saved',yes);$('story-save').setAttribute('aria-pressed',String(yes));$('story-save').setAttribute('aria-label',yes?t('Убрать из сохранённого'):t('Сохранить место'));$('saved-count').textContent=String(saved.length)}
 function renderLibrary(){updateSaveButton();if(state.tab==='explore')return;const entries=state.tab==='saved'?saved:history;$('library-grid').replaceChildren(...entries.map(card));$('library-empty').hidden=entries.length>0;$('clear-history').hidden=state.tab!=='history'||!entries.length;$('library-title').textContent=state.tab==='saved'?t('Сохранённое'):t('История прогулок');$('library-description').textContent=state.tab==='saved'?t('Места, к которым хочется вернуться. Сохраняются на этом устройстве.'):t('Здесь появляются места после первого прослушанного фрагмента.');$('library-empty').querySelector('h3').textContent=state.tab==='saved'?t('Здесь появятся ваши места'):t('Здесь появятся услышанные истории');$('library-empty').querySelector('p').textContent=state.tab==='saved'?t('Нажмите на сердечко рядом с интересным местом.'):t('Откройте место и прослушайте первый фрагмент.');translateLibrary()}
@@ -115,7 +113,7 @@ const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition
 if(!SpeechRecognition)$('voice-question').hidden=true;
 $('voice-question').onclick=()=>{if(!SpeechRecognition||!state.ai)return;narrator.pause();recognition?.abort();recognition=new SpeechRecognition();recognition.lang=LANGUAGE_TAG;recognition.interimResults=false;recognition.onresult=e=>{const text=e.results[0][0].transcript;$('question-input').value=text;message(t('Распознано. Отправьте вопрос стрелкой или измените текст.'))};recognition.onerror=()=>message(t('Не удалось распознать речь. Введите вопрос текстом.'));recognition.onend=()=>{$('voice-question').textContent='♩'};$('voice-question').textContent='●';try{recognition.start()}catch{message(t('Микрофон недоступен. Введите вопрос текстом.'))}};
 $('story-dialog').addEventListener('close',()=>recognition?.abort());
-function resetPlaces(){const token=nextDiscovery();searchController?.abort();state.places=demoPlaces;state.emptyNearby=false;$('section-title').textContent=t('Прогулка по Петербургу ↗');$('location-label').textContent=t('ДЛЯ ПЕРВОГО ЗНАКОМСТВА');$('search-input').value='';$('reset-places').hidden=true;setStatus(t('Три места, чтобы попробовать гида. Это примеры, а не ваша геопозиция.'));renderPlaces();translateDiscovery(token)}
+function resetPlaces(){nextDiscovery();searchController?.abort();state.places=[];state.emptyNearby=false;$('section-title').textContent=t('Найдите своё место');$('location-label').textContent=t('ВАШ ГОРОД, ВАШИ ИСТОРИИ');$('search-input').value='';$('reset-places').hidden=true;setStatus(t('Нажмите «Что рядом со мной» или введите город или название места.'));renderPlaces()}
 $('reset-places').onclick=resetPlaces;
 $('search-form').onsubmit=async e=>{e.preventDefault();const query=$('search-input').value.trim();if(!query){resetPlaces();return}const token=nextDiscovery();searchController?.abort();searchController=new AbortController();setStatus(t('Ищем «')+query+t('» в Википедии…'));try{const results=await searchPlaces(query,searchController.signal,LANGUAGE);if(!searchEpoch.isCurrent(token))return;state.places=results;translateDiscovery(token,searchController.signal);state.emptyNearby=false;$('location-label').textContent=t('ИССЛЕДУЙТЕ ЛЮБОЕ МЕСТО');$('section-title').textContent=t('Результаты поиска');$('reset-places').hidden=false;setStatus(t('Найдено: ')+results.length+t('. Уточните объект по названию и источнику.'));renderPlaces()}catch(e){if(e.name!=='AbortError'&&searchEpoch.isCurrent(token))setStatus(safeError(e,'Не удалось загрузить рассказ. Попробуйте другое место.'),true)}};
 $('locate').onclick=()=>{
