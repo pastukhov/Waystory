@@ -32,7 +32,7 @@ function card(place){
  if(translated&&!(place.aiGenerated&&place.storyLanguage===LANGUAGE))place={...place,originalTitle:place.originalTitle||place.title,originalSubtitle:place.originalSubtitle??place.subtitle??'',...translated,cardLanguage:LANGUAGE};
  const c=document.createElement('article');c.className='place-card';
  c.innerHTML='<div class="card-art"></div><button class="card-heart" aria-label="">♡</button><div class="card-body"><div class="card-kicker"><span></span><span></span></div><h3 class="card-title"></h3><p class="card-subtitle"></p><button class="card-listen"><span class="play-small">▶</span><span class="card-open-label"></span><span>↗</span></button></div>';
- c.querySelector('.card-open-label').textContent=t('Открыть рассказ');
+ c.querySelector('.card-open-label').textContent=t(state.user?'Открыть рассказ':'Войти, чтобы открыть рассказ');
  showArt(c.querySelector('.card-art'),place);
  if(place.tag){const tag=document.createElement('span');tag.className='card-badge';tag.textContent=metadata(place.tag);c.querySelector('.card-art').append(tag)}
  c.querySelector('.card-title').textContent=place.title;
@@ -104,6 +104,10 @@ function renderStory(){
 function renderText(){const p=state.selected;if(!p)return;state.depth=clampDepth(p.blocks,state.depth);const blocks=p.blocks.filter(b=>b.depth<=state.depth);$('story-text').replaceChildren(...blocks.map(b=>{const el=document.createElement('section');el.className='story-block';el.dataset.block=b.id;el.classList.toggle('heard',state.heard.includes(b.id));el.classList.toggle('active',state.current?.id===b.id);const title=document.createElement('h3');title.textContent=metadata(b.title);const text=document.createElement('p');text.textContent=b.text;el.append(title,text);return el}));$('duration-label').textContent=durationLabel(p.blocks,state.depth);document.querySelectorAll('[data-depth]').forEach(b=>{const depth=+b.dataset.depth;b.disabled=!availableDepths(p.blocks).includes(depth);b.classList.toggle('selected',depth===state.depth);b.setAttribute('aria-pressed',String(depth===state.depth));if(b.closest('.depth-switch'))b.textContent=t(['Коротко','Обычно','Подробно'][depth])+' · '+durationLabel(p.blocks,depth)});updateProgress()}
 async function selectPlace(place){
  const token=placeEpoch.next();answerEpoch.next();answerController?.abort();placeController?.abort();placeController=new AbortController();narrator.stop();state.selected=null;state.heard=[];state.current=null;state.answer=false;
+ await configReady;
+ await loadAccount();
+ if(!placeEpoch.isCurrent(token))return;
+ if(!state.user){$('story-dialog').close();$('story-text').replaceChildren();$('player').hidden=true;document.body.classList.remove('has-player');openDialog('account-dialog');return}
  $('story-detail-notice').hidden=true;$('story-language-notice').hidden=true;$('story-title').textContent=place.title;$('story-kind').textContent=t('ЗАГРУЖАЕМ ИСТОРИЮ');$('story-text').replaceChildren();$('answer').hidden=true;$('continue-story').hidden=true;$('story-play').disabled=true;$('story-restart').disabled=true;$('story-save').disabled=true;$('question-panel').hidden=true;$('story-source').hidden=true;$('story-source-note').textContent='';$('story-address').textContent='';$('story-category').textContent='';showArt($('story-art'),place);message('');openDialog('story-dialog');$('player').hidden=true;document.body.classList.remove('has-player');
  try{
    let p=await loadPlace(place,placeController.signal);if(!placeEpoch.isCurrent(token))return;
