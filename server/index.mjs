@@ -12,6 +12,7 @@ import {createPlaces} from './places/service.mjs';
 import {createSourceHttp} from './sources/http.mjs';
 import {createWikipediaProvider} from './sources/wikipedia.mjs';
 import {createOsmProvider} from './sources/osm.mjs';
+import {createWebEnrichment} from './sources/tavily.mjs';
 import {createWikivoyageProvider} from './sources/wikivoyage.mjs';
 import {createWikidataProvider} from './sources/wikidata.mjs';
 const root=fileURLToPath(new URL('../dist/',import.meta.url));
@@ -30,8 +31,9 @@ export function createApp(options={}){
  const store=options.placeStore||((settings.enabled||(options.env||process.env).YANDEX_API_KEY)?createPlaceStore({dbPath:options.sourceDbPath||settings.dbPath}):null);
  const sourceRequest=store?createSourceHttp({fetchFn:options.sourceFetchFn,osmEndpoint:settings.osmEndpoint}):null;
  const wikidata=sourceRequest?createWikidataProvider({request:sourceRequest}):null;
- const places=options.places||(store?createPlaces({store,providers:options.sourceProviders||[createWikipediaProvider({request:sourceRequest}),createOsmProvider({request:sourceRequest,endpoint:settings.osmEndpoint}),wikidata,createWikivoyageProvider({request:sourceRequest,wikidata})]}):null);
- const guide=createGuide({...options,collectSources:options.collectSources||(places?async(id,o)=>{const p=store.getById(id);if(!p)throw new GuideError(404,'Место не найдено. Повторите поиск.');return places.collect(p,o)}:undefined),resolveLegacy:options.resolveLegacy||(places?async(ref,o)=>{if(ref.title){const wiki=places.providers.find(p=>p.id==='wikipedia');const r=await wiki.resolveTitle(ref.title,ref.language,o);if(!r.places?.length)throw new GuideError(404,'Место не найдено.');return store.upsert(r.places[0]).id}return (await places.resolve(ref,o)).place.id}:undefined)}),speech=createSpeech(options),auth=options.auth||createAuth({env:options.env,fetchFn:options.authFetchFn,dbPath:options.authDbPath});const server=http.createServer(async(req,res)=>{
+ const enrichment=store?createWebEnrichment({db:store.db,env:options.env,fetchFn:options.webFetchFn}):null;
+ const places=options.places||(store?createPlaces({store,enrichment,providers:options.sourceProviders||[createWikipediaProvider({request:sourceRequest}),createOsmProvider({request:sourceRequest,endpoint:settings.osmEndpoint}),wikidata,createWikivoyageProvider({request:sourceRequest,wikidata})]}):null);
+ const guide=createGuide({...options,collectSources:options.collectSources||(places?async(id,o)=>{const p=store.getById(id);if(!p)throw new GuideError(404,'Место не найдено. Повторите поиск.');return places.collect(p,{...o,includeWeb:true})}:undefined),resolveLegacy:options.resolveLegacy||(places?async(ref,o)=>{if(ref.title){const wiki=places.providers.find(p=>p.id==='wikipedia');const r=await wiki.resolveTitle(ref.title,ref.language,o);if(!r.places?.length)throw new GuideError(404,'Место не найдено.');return store.upsert(r.places[0]).id}return (await places.resolve(ref,o)).place.id}:undefined)}),speech=createSpeech(options),auth=options.auth||createAuth({env:options.env,fetchFn:options.authFetchFn,dbPath:options.authDbPath});const server=http.createServer(async(req,res)=>{
  const json=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data))};
  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: https://upload.wikimedia.org; media-src 'self' blob:; connect-src 'self' https://ru.wikipedia.org https://en.wikipedia.org https://tr.wikipedia.org; object-src 'none'; base-uri 'self'");
  let pathname;try{pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname)}catch{return json(400,{error:'Неверный адрес.'})}
@@ -47,11 +49,20 @@ export function createApp(options={}){
     const getNumber=k=>url.searchParams.has(k)&&url.searchParams.get(k).trim()?Number(url.searchParams.get(k)):NaN;
     return json(200,await places.nearby({lat:getNumber('lat'),lon:getNumber('lon'),radius:url.searchParams.has('radius')?getNumber('radius'):1500,language,signal:controller.signal}));
    }
-   if(pathname==='/api/places/resolve'){
+   if(['/api/places/resolve','/api/places/enrich'].includes(pathname)){
     if(req.method!=='POST')return json(405,{error:'Метод не поддерживается.'});
     const user=auth.session(req.headers.cookie);if(!user)return json(auth.enabled?401:503,{error:'Войдите через Google.'});
     if(!auth.origin||req.headers.origin!==auth.origin)return json(403,{error:'Неверный источник.'});
-    const body=await readJson(req);return json(200,await places.resolve(body.ref,{language:body.language||'ru',signal:controller.signal}));
+    const body=await readJson(req);
+    if(pathname==='/api/places/enrich'){
+     if(typeof body.placeId!=='string'||body.placeId.length>300||!['ru','en'].includes(body.language||'ru')||Object.keys(body).some(k=>!['placeId','language'].includes(k)))throw new GuideError(400,'Неверный запрос.');
+     const p=store.getById(body.placeId);if(!p)throw new GuideError(404,'Место не найдено. Повторите поиск.');
+     if(!enrichment.enabled)return json(200,{sources:[],statuses:[{provider:'official-web',status:'disabled'}]});
+     const bundle=await places.collect(p,{language:body.language||'ru',signal:controller.signal});
+     const result=await enrichment.run(p,{language:body.language||'ru',signal:controller.signal,identityUrls:bundle.documents.filter(d=>d.provider==='osm'&&d.website).map(d=>d.website)});
+     const {publicSource}=await import('./places/service.mjs');return json(200,{sources:result.documents.map(publicSource),statuses:[{provider:'official-web',status:result.status}]});
+    }
+    return json(200,await places.resolve(body.ref,{language:body.language||'ru',signal:controller.signal}));
    }
    return json(404,{error:'Не найдено.'});
   }catch(error){if(error.status===429)res.setHeader('Retry-After','60');if(!res.destroyed)return json(error.status||503,{error:error instanceof GuideError?error.message:'Источники мест временно недоступны.'})}
@@ -73,8 +84,8 @@ export function createApp(options={}){
  }
  let user=null;
  try{if(['/api/config','/api/guide','/api/speech'].includes(pathname))user=auth.session(req.headers.cookie)}catch{return json(503,{error:'Вход временно недоступен.'})}
- if(pathname==='/api/config'&&!user)return json(200,{ai:false,mode:'demo',multisource:settings.enabled&&!!places});
- if(pathname==='/api/config')return json(200,guide.enabled?{ai:true,mode:'live',multisource:settings.enabled&&!!places,vision:true,tts:speech.enabled}:{ai:false,mode:'demo',multisource:settings.enabled&&!!places,...(speech.enabled?{tts:true}:{})});
+ if(pathname==='/api/config'&&!user)return json(200,{ai:false,mode:'demo',multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!enrichment?.enabled});
+ if(pathname==='/api/config')return json(200,guide.enabled?{ai:true,mode:'live',multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!enrichment?.enabled,vision:true,tts:speech.enabled}:{ai:false,mode:'demo',multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!enrichment?.enabled,...(speech.enabled?{tts:true}:{})});
  if(pathname==='/api/guide'||pathname==='/api/speech'){
   if(!auth.origin&&req.headers.origin){try{if(new URL(req.headers.origin).host!==req.headers.host)return json(403,{error:'Запрос с другого сайта запрещён.'})}catch{return json(403,{error:'Неверный источник.'})}}
   if(req.method!=='POST')return json(405,{error:'Метод не поддерживается.'});

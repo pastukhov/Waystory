@@ -1,0 +1,5 @@
+[
+ {"host":"muze.gov.tr","enabled":false,"rightsVerified":false,"permissionUrl":null,"policyId":"muze-pending","allowModelInput":false,"allowTextCache":false},
+ {"host":"www.kulturportali.gov.tr","enabled":false,"rightsVerified":false,"permissionUrl":null,"policyId":"kultur-pending","allowModelInput":false,"allowTextCache":false},
+ {"host":"goturkiye.com","enabled":false,"rightsVerified":false,"permissionUrl":null,"policyId":"goturkiye-pending","allowModelInput":false,"allowTextCache":false}
+]

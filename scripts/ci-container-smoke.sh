@@ -49,7 +49,7 @@ const base = 'http://127.0.0.1:' + process.env.PORT;
 const config = await fetch(base + '/api/config');
 assert.equal(config.status, 200);
 const data = await config.json();
-assert.deepEqual(data, {ai: false, mode: 'demo', multisource: false});
+assert.deepEqual(data, {ai: false, mode: 'demo', multisource: false, webEnrichment: false});
 assert.equal(JSON.stringify(data).includes(process.env.WAYSTORY_CI_SECRET), false);
 for (const url of ['/.env', '/server/config.mjs']) {
   assert.equal((await fetch(base + url)).status, 404);

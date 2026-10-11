@@ -3,7 +3,7 @@ import {createSourceCache} from '../sources/cache.mjs';
 import {GuideError} from '../guide.mjs';import {mergePlaces,refKey} from './model.mjs';
 const bad=()=>new GuideError(400,'Некорректные параметры поиска.');
 export function publicSource(d){const {text,sitelinks,website,wikipediaTitle,...metadata}=d;return metadata}
-export function createPlaces({store,providers,now=Date.now}={}){
+export function createPlaces({store,providers,now=Date.now,enrichment}={}){
  const open=providers.filter(p=>['wikipedia','osm','wikidata','wikivoyage'].includes(p.id)),cache=new Map();let minute=now(),calls=0,active=0;
  function language(l){if(!['ru','en'].includes(l))throw bad()}
  function save(results){const documents=results.flatMap(r=>r.documents||[]),places=mergePlaces(results.flatMap(r=>r.places||[])).map(p=>store.upsert(p));return {places:places.slice(0,30),sources:[...new Map(documents.map(d=>[d.id,publicSource(d)])).values()]}}
@@ -24,6 +24,6 @@ export function createPlaces({store,providers,now=Date.now}={}){
    await hydrate(good,signal);const value={...save(good),statuses};if(method==='search'){value.places=mergePlaces([...value.places,...store.search(input.q)]).slice(0,30)}if(!statuses.some(s=>s.status==='unavailable')){if(cache.size>=100)cache.delete(cache.keys().next().value);cache.set(key,{time:now(),value})}return value;
   }finally{active--}
  }
- const collector=createCollector({providers:open,cache:store.db?createSourceCache({db:store.db,now}):null});
+ const collector=createCollector({providers:[...open,...(enrichment?[enrichment]:[])],cache:store.db?createSourceCache({db:store.db,now}):null});
  return {store,providers:open,async nearby(input){if(!Number.isFinite(input.lat)||!Number.isFinite(input.lon)||Math.abs(input.lat)>90||Math.abs(input.lon)>180||![1500,5000,10000].includes(input.radius??1500))throw bad();return run('nearby',{...input,radius:input.radius??1500})},async search(input){if(typeof input.q!=='string'||input.q.trim().length<2||input.q.length>200)throw bad();return run('search',{...input,q:input.q.trim()})},async resolve(ref,{language:lang='ru',signal}={}){language(lang);try{refKey(ref)}catch{throw bad()}const provider=open.find(p=>p.id===ref.provider);if(!provider?.resolve)throw bad();try{const result=await provider.resolve(ref,{signal});if(!result?.places?.length){const cached=store.getByRef(ref);if(cached)return {place:cached,sources:[],statuses:[{provider:provider.id,status:'unavailable'}]};throw new GuideError(404,'Место не найдено.')}const resolved=[result];const wd=open.find(p=>p.id==='wikidata');const ids=result.places.flatMap(p=>p.refs.filter(r=>r.provider==='wikidata').map(r=>r.id));if(ids.length&&wd?.entities){try{resolved.push(await wd.entities(ids,{signal}))}catch{}}await hydrate(resolved,signal);const saved=save(resolved);return {place:saved.places[0],sources:saved.sources,statuses:[{provider:provider.id,status:result.status||'ok'}]}}catch(error){if(error instanceof GuideError)throw error;throw new GuideError(503,'Источник места временно недоступен.')}},collect:collector};
 }
