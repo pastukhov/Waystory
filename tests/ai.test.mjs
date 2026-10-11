@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
 import {createApp as createProtectedApp} from '../server/index.mjs';
-const createApp=options=>createProtectedApp({...options,auth:{enabled:true,session:()=>({id:'test'}),consume(){}}});
+import {guideFixture} from './fixtures/guide.mjs';
+const createApp=options=>createProtectedApp({sourceDbPath:':memory:',...guideFixture,...options,auth:{enabled:true,session:()=>({id:'test'}),consume(){}}});
 
 const env={AUTHENTICATED_REQUESTS_UNLIMITED:'false',YANDEX_API_KEY:'test-key-never-expose',YANDEX_FOLDER_ID:'test-folder'};
 const place={title:'Казанский собор',source:'https://ru.wikipedia.org/wiki/Казанский_собор',text:'Казанский собор построен в 1801–1811 годах. Архитектор — Андрей Воронихин.'};
 const story={title:'Казанский собор',blocks:[{title:'Главное',depth:0,text:'Перед вами Казанский собор.'},{title:'История',depth:1,text:'Его построили в 1801–1811 годах.'},{title:'Архитектор',depth:2,text:'Проект собора создал русский архитектор Андрей Воронихин.'}]};
-function provider(value=story){return async()=>new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify(value)}}]}),{status:200})}
+function provider(value=story){value={...value,...(value.blocks?{blocks:value.blocks.map(b=>({...b,sourceIds:['fixture']}))}:value.text?{sourceIds:['fixture']}:{})};return async()=>new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify(value)}}]}),{status:200})}
 function request(app,url,body,headers={},method=body===undefined?'GET':'POST'){
  return new Promise((resolve,reject)=>{
   const req=Readable.from(body===undefined?[]:[typeof body==='string'?body:JSON.stringify(body)]);
@@ -83,7 +84,7 @@ test('truncated generation is rejected instead of caching a partial story',async
 });
 test('client cancellation is passed to Yandex without leaking internal errors',async()=>{
  const {createGuide}=await import('../server/guide.mjs');const controller=new AbortController();
- const guide=createGuide({env,fetchFn:async(url,{signal})=>new Promise((resolve,reject)=>{
+ const guide=createGuide({...guideFixture,env,fetchFn:async(url,{signal})=>new Promise((resolve,reject)=>{
   signal.addEventListener('abort',()=>reject(signal.reason),{once:true});controller.abort();
  })});
  await assert.rejects(guide.run({action:'story',place},controller.signal),{status:499});
@@ -91,7 +92,7 @@ test('client cancellation is passed to Yandex without leaking internal errors',a
 test('story language is explicit, localized title returned and cache separates languages',async()=>{
  let calls=0;const app=createApp({env,fetchFn:async(url,o)=>{calls++;const b=JSON.parse(o.body);assert.match(b.messages[0].content,/English|русск/);return provider({...story,title:calls===1?'Казанский собор':'Kazan Cathedral'})()}});
  const ru=await request(app,'/api/guide',{action:'story',place,language:'ru'});const en=await request(app,'/api/guide',{action:'story',place,language:'en'});
- assert.equal(calls,2);assert.equal(ru.json().title,'Казанский собор');assert.equal(en.json().language,'en');assert.equal(en.json().storyVersion,2);
+ assert.equal(calls,2);assert.equal(ru.json().title,'Казанский собор');assert.equal(en.json().language,'en');assert.equal(en.json().storyVersion,3);
 });
 test('short sources can return only the essential story instead of inventing detail',async()=>{
  const app=createApp({env,fetchFn:provider({title:'Казанский собор',blocks:[story.blocks[0]]})});const r=await request(app,'/api/guide',{action:'story',place});assert.equal(r.status,200);assert.equal(r.json().blocks.length,1);assert.equal(r.json().detailLimited,true);
@@ -102,4 +103,4 @@ test('near-identical length tiers and out-of-order story sections are rejected',
 });
 test('batch translation returns only requested IDs and localized text',async()=>{const app=createApp({env,fetchFn:provider({places:[{id:'wiki-en-1',title:'Красная башня',subtitle:'Башня в Аланье'}]})});const r=await request(app,'/api/guide',{action:'translatePlaces',language:'ru',places:[{id:'wiki-en-1',title:'Red Tower',subtitle:'Tower in Alanya'}]});assert.equal(r.status,200);assert.equal(r.json().places[0].title,'Красная башня')});
 test('unsupported language cannot silently generate or bill in another language',async()=>{let calls=0;const app=createApp({env,fetchFn:async()=>{calls++;return provider()()}});assert.equal((await request(app,'/api/guide',{action:'story',place,language:'tr'})).status,400);assert.equal(calls,0)});
-test('unlimited mode removes the AI hourly ceiling',async()=>{const {createGuide}=await import('../server/guide.mjs');let calls=0;const guide=createGuide({env:{...env,AUTHENTICATED_REQUESTS_UNLIMITED:undefined,AI_REQUESTS_PER_HOUR:'1'},fetchFn:async()=>{calls++;return provider({text:'Ответ.'})()}});for(let i=0;i<3;i++)await guide.run({action:'question',place,question:'Кто архитектор?',heard:[]});assert.equal(calls,3)});
+test('unlimited mode removes the AI hourly ceiling',async()=>{const {createGuide}=await import('../server/guide.mjs');let calls=0;const guide=createGuide({...guideFixture,env:{...env,AUTHENTICATED_REQUESTS_UNLIMITED:undefined,AI_REQUESTS_PER_HOUR:'1'},fetchFn:async()=>{calls++;return provider({text:'Ответ.'})()}});for(let i=0;i<3;i++)await guide.run({action:'question',place,question:'Кто архитектор?',heard:[]});assert.equal(calls,3)});

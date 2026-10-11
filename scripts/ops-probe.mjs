@@ -43,13 +43,14 @@ if(mode==='diagnose'){
   await probe('ai','https://ai.api.cloud.yandex.net/v1/chat/completions',{method:'POST',headers:{Authorization:'Api-Key '+key,'OpenAI-Project':folder,'Content-Type':'application/json','x-data-logging-enabled':'false'},body:JSON.stringify({model:model.startsWith('gpt://')?model:`gpt://${folder}/${model}`,messages:[{role:'user',content:'Reply with OK.'}],max_tokens:32,stream:false})});
   const {createGuide}=await import(new URL('./server/guide.mjs','file://'+process.cwd()+'/'));
   const start=Date.now();
-  const guide=createGuide({env,fetchFn:async(...args)=>{
+  const fixedSource={id:'ops-aunesis',provider:'wikipedia',url:'https://en.wikipedia.org/wiki/Aunesis',title:'Aunesis',language:'en',kind:'history',scope:'place',placeIds:['wiki:en:1'],retrievedAt:null,publishedAt:null,updatedAt:null,revision:'fixed-diagnostic',text:'Aunesis was a coastal town of ancient Pamphylia or of Cilicia, inhabited during Roman times. It was the port of Hamaxia. Its site is located below Hamaxia, in Turkey.',license:{id:'CC-BY-SA-4.0',url:'https://creativecommons.org/licenses/by-sa/4.0/',policyId:'wikimedia-cc-by-sa',attribution:'English Wikipedia contributors, fixed diagnostic excerpt'}};
+  const guide=createGuide({env,collectSources:async()=>({place:{id:'wiki:en:1',refs:[{provider:'wikipedia',language:'en',pageId:1}],names:{original:'Aunesis'}},documents:[fixedSource],statuses:[],fingerprint:'fixed-diagnostic-v3'}),fetchFn:async(...args)=>{
    const response=await fetch(...args);
    if(!response.ok)report({probe:'ai-story-upstream',status:response.status,error:await errorBody(response.clone())});
    return response;
   }});
   try{
-   const story=await guide.run({action:'story',language:'ru',place:{title:'Aunesis',source:'https://en.wikipedia.org/wiki/Aunesis',text:'Aunesis was a coastal town of ancient Pamphylia or of Cilicia, inhabited during Roman times. It was the port of Hamaxia. Its site is located below Hamaxia, in Turkey.'}});
+   const story=await guide.run({action:'story',language:'ru',placeId:'wiki:en:1',place:{title:'Aunesis',source:'https://en.wikipedia.org/wiki/Aunesis',text:'Aunesis was a coastal town of ancient Pamphylia or of Cilicia, inhabited during Roman times. It was the port of Hamaxia. Its site is located below Hamaxia, in Turkey.'}});
    report({probe:'ai-story',valid:true,language:story.language,blocks:story.blocks.length,durationMs:Date.now()-start});
   }catch(error){report({probe:'ai-story',valid:false,status:error.status||null,error:clean(error.message),durationMs:Date.now()-start});process.exitCode=1}
  }

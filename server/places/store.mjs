@@ -2,7 +2,7 @@ import {DatabaseSync} from 'node:sqlite';import {mkdirSync,chmodSync} from 'node
 import {normalizePlace,mergePlaces,refKey} from './model.mjs';
 export function createPlaceStore({dbPath=process.env.SOURCE_DB_PATH||'data/sources.sqlite',now=Date.now}={}){
  if(dbPath!==':memory:')mkdirSync(dirname(dbPath),{recursive:true,mode:0o700});const db=new DatabaseSync(dbPath);if(dbPath!==':memory:')chmodSync(dbPath,0o600);
- db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
+ db.exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
  CREATE TABLE IF NOT EXISTS places(id TEXT PRIMARY KEY, data TEXT NOT NULL, updated INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS place_refs(ref TEXT PRIMARY KEY,place_id TEXT NOT NULL REFERENCES places(id) ON DELETE CASCADE);
  CREATE TABLE IF NOT EXISTS place_aliases(alias TEXT PRIMARY KEY,place_id TEXT NOT NULL REFERENCES places(id) ON DELETE CASCADE);`);
