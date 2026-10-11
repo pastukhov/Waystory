@@ -52,7 +52,7 @@ for(let attempt=0;attempt<20;attempt++) {
   await new Promise(resolve=>setTimeout(resolve,500));
 }
 assert.equal(result?.response.statusCode,200);
-assert.deepEqual(JSON.parse(result.body),{ai:false,mode:'demo'});
+assert.deepEqual(JSON.parse(result.body),{ai:false,mode:'demo',multisource:false});
 assert.match(result.response.headers['permissions-policy'],/geolocation=\(self\)/);
 assert.match(result.response.headers['permissions-policy'],/microphone=\(self\)/);
 assert.equal((await get('/.env')).response.statusCode,404);
