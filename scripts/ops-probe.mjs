@@ -40,6 +40,29 @@ if(mode==='diagnose'){
   const places=createPlaces({store,providers:[createWikipediaProvider({request}),createOsmProvider({request,endpoint}),wikidata,createWikivoyageProvider({request,wikidata})]});
   if(!await runSourcesProbe({collect:(place,options)=>places.collect(store.getById(place.id)||place,options),report}))process.exitCode=1;
  }finally{store.close()}
+ }else if(mode==='global-source-test'){
+ const module=path=>import(new URL(path,'file://'+process.cwd()+'/'));
+ const {createPlaceStore}=await module('./server/places/store.mjs');
+ const {createSearchProvider}=await module('./server/sources/search-provider.mjs');
+ const {configureSearchPolicy}=await module('./server/sources/search-policy.mjs');
+ const {buildPlaceContext}=await module('./server/sources/place-context.mjs');
+ const {matchCandidate}=await module('./server/sources/match.mjs');
+ const store=createPlaceStore({dbPath:env.SOURCE_DB_PATH||'data/sources.sqlite'});
+ try{
+  const search=createSearchProvider({db:store.db,env});
+  const configured=env.GLOBAL_SOURCE_DISCOVERY_ENABLED==='true'&&search.enabled&&configureSearchPolicy(JSON.parse(env.GLOBAL_WEB_USE_POLICY_JSON||'{}'));
+  const place=store.search('Love Alanya').find(p=>Object.values(p.names).some(n=>n==='Love Alanya')||p.names.native?.text==='Love Alanya');
+  if(!configured||!place){report({probe:'global-source-test',configured,placeFound:!!place});process.exitCode=1}
+  else{
+   const context=buildPlaceContext(place);
+   const result=await search.searchCandidates(context);
+   const matches=result.candidates.map(c=>matchCandidate(context,c));
+   const reasons={};for(const m of matches)if(m.reason)reasons[m.reason]=(reasons[m.reason]||0)+1;
+   const verified=matches.filter(m=>m.decision==='verified').length;
+   report({probe:'global-source-test',configured,calls:result.calls,candidates:result.candidates.length,verified,reasons,outcomes:result.outcomes});
+   if(!result.outcomes.some(o=>o.status==='ok')||result.outcomes.some(o=>o.status==='partial'))process.exitCode=1;
+  }
+ }finally{store.close()}
 }else if(mode==='web-source-test'){
  const {createPlaceStore}=await import(new URL('./server/places/store.mjs','file://'+process.cwd()+'/'));
  const {createWebEnrichment}=await import(new URL('./server/sources/tavily.mjs','file://'+process.cwd()+'/'));
