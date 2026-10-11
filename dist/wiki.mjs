@@ -15,7 +15,7 @@ async function api(params,signal,lang='ru'){
   finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
 }
 
-function normalize(page,lang='ru'){return {id:'wiki-'+(lang==='ru'?'':lang+'-')+page.pageid,lang,wikidata:page.pageprops?.wikibase_item,pageid:page.pageid,title:page.title,category:'Из Википедии',subtitle:page.description||'Открыть рассказ и источник',source:'https://'+lang+'.wikipedia.org/?curid='+page.pageid,art:'generic',coords:page.coordinates?.[0]?[page.coordinates[0].lat,page.coordinates[0].lon]:null,demo:false,thumbnail:page.thumbnail?.source}}
+function normalize(page,lang='ru'){return {id:'wiki-'+(lang==='ru'?'':lang+'-')+page.pageid,lang,wikidata:page.pageprops?.wikibase_item,pageid:page.pageid,title:page.title,originalTitle:page.title,category:'Из Википедии',subtitle:page.description||'Открыть рассказ и источник',source:'https://'+lang+'.wikipedia.org/?curid='+page.pageid,art:'generic',coords:page.coordinates?.[0]?[page.coordinates[0].lat,page.coordinates[0].lon]:null,demo:false,thumbnail:page.thumbnail?.source}}
 export async function searchPlaces(query,signal,language='ru'){
   const lang=language==='en'?'en':'ru';
   const j=await api({action:'query',generator:'search',gsrsearch:query,gsrnamespace:0,gsrlimit:8,prop:'pageimages|description|coordinates',piprop:'thumbnail',pithumbsize:600},signal,lang);
@@ -42,10 +42,10 @@ export async function nearbyPlaces(lat,lon,signal,language='ru'){
 function distance(a,b,c,d){const r=Math.PI/180,x=Math.sin((c-a)*r/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin((d-b)*r/2)**2;return Math.round(6371000*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x)))}
 export async function loadPlace(place,signal){
   if(place.blocks)return place;
-  const j=await api({action:'query',pageids:place.pageid,prop:'extracts|info',explaintext:1,exchars:9000,inprop:'url'},signal,edition(place.lang));
+  const j=await api({action:'query',pageids:place.pageid,prop:'extracts|info|coordinates',explaintext:1,exchars:9000,inprop:'url'},signal,edition(place.lang));
   const page=Object.values(j.query?.pages||{})[0];if(!page?.extract)throw new Error('Для этого места нет текста. Выберите другой объект.');
   const clean=page.extract.replace(/==+[^\n]*==+/g,'').replace(/\[[^\]]*\]/g,'').trim();
   const sentences=splitSentences(clean).slice(0,32);
   const blocks=[];for(let i=0;i<sentences.length;i+=3)blocks.push({id:place.id+'-'+i,depth:i===0?0:i<9?1:2,title:i===0?'Главное':i<9?'История и детали':'Подробнее',text:sentences.slice(i,i+3).join(' ')});
-  return {...place,blocks,source:page.fullurl||place.source,sourceText:clean.slice(0,9000),questions:[]};
+  return {...place,originalTitle:page.title||place.originalTitle||place.title,coords:page.coordinates?.[0]?[page.coordinates[0].lat,page.coordinates[0].lon]:place.coords,blocks,source:page.fullurl||place.source,sourceText:clean.slice(0,9000),questions:[]};
 }

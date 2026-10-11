@@ -28,7 +28,7 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
     return r.fulfill({json:{text:language==='ru'?'Ответ по источнику.':'An answer based on the source.'}});
    });
    await page.route('**/api/speech',r=>{assert.equal(r.request().postDataJSON().language,language);return r.fulfill({contentType:'audio/wav',body:wave()})});
-   await page.route('https://*.wikipedia.org/**',r=>r.fulfill({json:{query:{pages:{1:{pageid:1,title,description:'City history',extract:language==='ru'?'Собор находится в центре города. Здесь сохранилась историческая архитектура.':'The cathedral stands in the city centre. Historic architecture survives here.',fullurl:'https://'+language+'.wikipedia.org/wiki/Test'}}}}}));
+   await page.route('https://*.wikipedia.org/**',r=>r.fulfill({json:{query:{pages:{1:{pageid:1,title,description:'City history',coordinates:[{lat:36.57,lon:31.98}],extract:language==='ru'?'Собор находится в центре города. Здесь сохранилась историческая архитектура.':'The cathedral stands in the city centre. Historic architecture survives here.',fullurl:'https://'+language+'.wikipedia.org/wiki/Test'}}}}}));
    async function search(){await page.locator('#search-input').fill('cathedral');await page.locator('#search-form').evaluate(el=>el.requestSubmit());await page.waitForFunction(()=>document.querySelectorAll('#places .place-card').length===1)}
    await page.goto('http://127.0.0.1:'+app.address().port);
    assert.equal(await page.locator('#places .place-card').count(),0);
@@ -45,6 +45,7 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
    assert.equal(await page.locator('html').getAttribute('lang'),language);
    if(language==='en'){await page.locator('[data-tab="saved"]').click();await page.waitForFunction(expected=>document.querySelector('#library-grid .card-title')?.textContent===expected,title);await page.locator('[data-tab="explore"]').click();}
    await page.locator('.card-listen').first().click();await page.waitForFunction(expected=>document.querySelector('#story-title')?.textContent===expected&&!document.querySelector('#story-play').disabled,title);
+   const route=new URL(await page.locator('#story-map a').getAttribute('href'));assert.equal(route.searchParams.get('destination'),'36.57,31.98');assert.equal(await page.locator('#story-map a').getAttribute('rel'),'noopener noreferrer');
    const durations=[];
    for(const depth of [0,1,2]){await page.locator('.depth-switch [data-depth="'+depth+'"]').click();assert.equal(await page.locator('.story-block').count(),depth+1);durations.push(await page.locator('#duration-label').innerText())}
    assert.equal(new Set(durations).size,3);

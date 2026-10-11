@@ -1,3 +1,4 @@
+import {mapLink,originalPlaceName} from './maps.mjs';
 import {LANGUAGE,LANGUAGE_TAG,STORY_VERSION,canReuseStory} from './language.mjs';
 import {t,localizeDocument,durationLabel,availableDepths,clampDepth,sourceLanguage,canListen,safeError,speechError,cardMetadataKey} from './i18n.mjs';
 import {illustration} from './art.mjs';
@@ -27,6 +28,7 @@ function showArt(node,p){
     const img=document.createElement('img');img.src=p.thumbnail;img.alt=p.title;img.referrerPolicy='no-referrer';img.addEventListener('error',()=>node.innerHTML=illustration(p.art),{once:true});node.append(img);
   }else node.innerHTML=illustration(p.art);
 }
+function placeMapAnchor(place){const map=mapLink(place);if(!map)return null;const a=document.createElement('a');a.href=map.url;a.target='_blank';a.rel='noopener noreferrer';a.className='source-link';a.textContent=t(map.directions?'Маршрут в Google Maps':'Найти в Google Maps')+' ↗';return a}
 function card(place){
  const translated=libraryMetadata.get(cardMetadataKey(place,LANGUAGE));
  if(translated&&!(place.aiGenerated&&place.storyLanguage===LANGUAGE))place={...place,originalTitle:place.originalTitle||place.title,originalSubtitle:place.originalSubtitle??place.subtitle??'',...translated,cardLanguage:LANGUAGE};
@@ -36,6 +38,8 @@ function card(place){
  showArt(c.querySelector('.card-art'),place);
  if(place.tag){const tag=document.createElement('span');tag.className='card-badge';tag.textContent=metadata(place.tag);c.querySelector('.card-art').append(tag)}
  c.querySelector('.card-title').textContent=place.title;
+ const original=originalPlaceName(place);if(original!==place.title){const label=document.createElement('p');label.className='source-note';label.textContent=original;c.querySelector('.card-title').after(label)}
+ const map=placeMapAnchor(place);if(map)c.querySelector('.card-body').append(map);
  c.querySelector('.card-subtitle').textContent=place.aiGenerated&&place.storyLanguage===LANGUAGE&&place.cardLanguage!==LANGUAGE?t('У каждого места своя история'):metadata(place.subtitle)||place.address||t('У каждого места своя история');
  if((place.aiGenerated?place.storyLanguage:place.cardLanguage||place.lang||'ru')!==LANGUAGE){const source=document.createElement('small');source.className='source-note';source.textContent=ui('source')+': '+(place.aiGenerated?place.storyLanguage||ui('unknown'):place.lang||'ru');c.querySelector('.card-body').append(source)}
  c.querySelector('.card-kicker span').textContent=metadata(place.category)||t('Место');
@@ -90,6 +94,7 @@ narrator.language=LANGUAGE;
 function updateProgress(){const all=state.selected?.blocks?.filter(b=>b.depth<=state.depth)||[];const count=all.filter(b=>state.heard.includes(b.id)).length;$('player-progress').style.width=(all.length?100*count/all.length:0)+'%';$('player-progress-label').textContent=count+t(' из ')+all.length+t(' фрагментов')}
 function renderStory(){
  const p=state.selected;if(!p)return;
+ $('story-original').textContent=originalPlaceName(p);$('story-original').hidden=originalPlaceName(p)===p.title;const map=placeMapAnchor(p);$('story-map').replaceChildren(...(map?[map]:[]));
  $('story-title').textContent=p.title;$('reopen-story').textContent=p.title;$('story-category').textContent=metadata(p.category)||t('История места');$('story-address').textContent=p.address&&(p.lang||(/https:\/\/([a-z]+)\.wikipedia\.org/.exec(p.source||'')?.[1]))===LANGUAGE?p.address:t('Материалы Википедии');$('story-kind').textContent=p.demo?t('ГОТОВАЯ ИСТОРИЯ · РЕЖИМ ЗНАКОМСТВА'):p.aiGenerated?t('ИИ-РАССКАЗ ПО ИСТОЧНИКУ'):t('ТЕКСТ ИЗ ВИКИПЕДИИ');
  showArt($('story-art'),p);updateSaveButton();renderText();
  $('story-detail-notice').hidden=!(p.detailLimited||availableDepths(p.blocks).length<3);$('story-detail-notice').textContent=ui('limited');
@@ -108,7 +113,7 @@ async function selectPlace(place){
  await loadAccount();
  if(!placeEpoch.isCurrent(token))return;
  if(!state.user){$('story-dialog').close();$('story-text').replaceChildren();$('player').hidden=true;document.body.classList.remove('has-player');openDialog('account-dialog');return}
- $('story-detail-notice').hidden=true;$('story-language-notice').hidden=true;$('story-title').textContent=place.title;$('story-kind').textContent=t('ЗАГРУЖАЕМ ИСТОРИЮ');$('story-text').replaceChildren();$('answer').hidden=true;$('continue-story').hidden=true;$('story-play').disabled=true;$('story-restart').disabled=true;$('story-save').disabled=true;$('question-panel').hidden=true;$('story-source').hidden=true;$('story-source-note').textContent='';$('story-address').textContent='';$('story-category').textContent='';showArt($('story-art'),place);message('');openDialog('story-dialog');$('player').hidden=true;document.body.classList.remove('has-player');
+ $('story-original').hidden=true;$('story-map').replaceChildren();$('story-detail-notice').hidden=true;$('story-language-notice').hidden=true;$('story-title').textContent=place.title;$('story-kind').textContent=t('ЗАГРУЖАЕМ ИСТОРИЮ');$('story-text').replaceChildren();$('answer').hidden=true;$('continue-story').hidden=true;$('story-play').disabled=true;$('story-restart').disabled=true;$('story-save').disabled=true;$('question-panel').hidden=true;$('story-source').hidden=true;$('story-source-note').textContent='';$('story-address').textContent='';$('story-category').textContent='';showArt($('story-art'),place);message('');openDialog('story-dialog');$('player').hidden=true;document.body.classList.remove('has-player');
  try{
    let p=await loadPlace(place,placeController.signal);if(!placeEpoch.isCurrent(token))return;
    await configReady;if(!placeEpoch.isCurrent(token)||placeController.signal.aborted)return;
@@ -128,7 +133,7 @@ $('rate').oninput=e=>{narrator.rate=Number(e.target.value);$('rate-value').textC
 async function aiRequest(payload,signal){try{return await requestGuide({...payload,language:LANGUAGE},{signal})}catch(e){if(e.status===401){state.user=null;state.ai=false;state.vision=false;openDialog('account-dialog');loadAccount()}throw e}}
 async function ask(question,prepared){
  if(!state.selected)return;const current=state.selected;const token=answerEpoch.next();answerController?.abort();answerController=new AbortController();narrator.stop();state.answer=true;$('answer').hidden=false;$('answer').textContent=t('Готовим ответ…');$('continue-story').hidden=false;
- try{const text=prepared||(await aiRequest({action:'question',question,place:{title:current.title,source:current.source,text:current.sourceText||current.blocks.map(b=>b.text).join('\n')},heard:current.blocks.filter(b=>state.heard.includes(b.id)).map(b=>b.text)},answerController.signal)).text;
+ try{const text=prepared||(await aiRequest({action:'question',question,place:{title:originalPlaceName(current),source:current.source,text:current.sourceText||current.blocks.map(b=>b.text).join('\n')},heard:current.blocks.filter(b=>state.heard.includes(b.id)).map(b=>b.text)},answerController.signal)).text;
  if(!answerEpoch.isCurrent(token)||state.selected?.id!==current.id)return;
  const heading=document.createElement('strong');heading.textContent=question;const p=document.createElement('span');p.textContent=text;const listen=document.createElement('button');listen.textContent=t('▶ Слушать ответ');listen.onclick=()=>{showPlayer();narrator.play([{id:'answer-'+Date.now(),title:t('Ответ на вопрос'),text}])};$('answer').replaceChildren(heading,p,listen);$('question-input').value='';
  }catch(e){if(e.name!=='AbortError'&&answerEpoch.isCurrent(token))$('answer').textContent=safeError(e,'Не удалось получить ответ.')}
