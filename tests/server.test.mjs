@@ -13,3 +13,4 @@ test('AI requests without key cannot claim success',async()=>{const r=await requ
 test('cross origin writes are rejected',async()=>{const r=await request('/api/guide',{method:'POST',headers:{origin:'https://evil.test'}});assert.equal(r.status,403)});
 test('source and environment are not served',async()=>{assert.equal((await request('/.env')).status,404);assert.equal((await request('/server/index.mjs')).status,404)});
 test('index served with a CSP',async()=>{const r=await request('/');assert.equal(r.status,200);assert.match(r.headers.get('content-security-policy'),/default-src/);assert.match(r.text,/Waystory/)});
+test('home invites a search without a preselected city',async()=>{const r=await request('/');assert.doesNotMatch(r.text,/Прогулка по Петербургу|A walk around Saint Petersburg|Back to examples/);assert.match(r.text,/data-i18n="Найдите своё место"/)});

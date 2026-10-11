@@ -2,6 +2,13 @@ import {LANGUAGE} from './language.mjs';
 
 // Explicit UI catalog: Russian source keys, English equivalents.
 export const messages={
+"ВАШ ГОРОД, ВАШИ ИСТОРИИ":"YOUR CITY, YOUR STORIES",
+"Найдите своё место":"Find your place",
+"Нажмите «Что рядом со мной» или введите город или название места.":"Tap “What's near me” or search for a city or place.",
+"← Очистить поиск":"← Clear search",
+"или по фотографии.":"or from a photo.",
+"Поиск и тексты Википедии, места рядом, озвучку, изменение глубины, избранное и историю на этом устройстве.":"Wikipedia search and articles, nearby places, narration, detail controls, favorites and history on this device.",
+
 "Озвучка недоступна в этом браузере. Вы можете читать текст рассказа.":"Narration is unavailable in this browser. You can read the story instead.","Не удалось включить голос. Попробуйте ещё раз или читайте текст.":"Could not start narration. Try again or read the story.","Не удалось получить озвучку.":"Could not retrieve narration. Try again.","Не удалось воспроизвести аудио. Попробуйте ещё раз.":"Could not play the audio. Try again.","Не удалось загрузить голос. Проверьте соединение.":"Could not load narration. Check your connection.","Браузер просит ещё одно нажатие: нажмите «Продолжить», чтобы включить звук.":"Your browser needs another tap: press Continue to enable audio.","Не удалось включить звук. Попробуйте ещё раз.":"Could not enable audio. Try again.","Облачная озвучка не подключена.":"Cloud narration is not connected.","Недопустимая длина фрагмента для озвучки.":"This section has an invalid length for narration.","Язык озвучки не поддерживается.":"This narration language is not supported.","Фрагмент слишком длинный для озвучки.":"This section is too long for narration.","Озвучка временно занята или достигнут часовой лимит. Попробуйте позже.":"Narration is busy or the hourly limit has been reached. Try again later.","Нет доступа к SpeechKit. Проверьте роль ai.speechkit-tts.user и разрешение API-ключа на синтез речи.":"SpeechKit access denied. Check the ai.speechkit-tts.user role and the API key permission for speech synthesis.","SpeechKit временно недоступен. Попробуйте позже.":"SpeechKit is temporarily unavailable. Try again later.","Слишком большой ответ озвучки.":"The narration response is too large.","SpeechKit вернул некорректное аудио.":"SpeechKit returned invalid audio.","Озвучка отменена.":"Narration canceled.","Не удалось получить озвучку. Попробуйте позже.":"Could not retrieve narration. Try again later.",
   "Не удалось сохранить на устройстве. Возможно, хранилище переполнено.": "Could not save on this device. Storage may be full.",
   "У каждого места своя история": "Every place has a story",
