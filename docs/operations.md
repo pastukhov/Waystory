@@ -3,7 +3,7 @@
 The **Operations** workflow runs on the existing Waystory self-hosted runner. It accepts only six operations; no arbitrary shell commands, paths or secrets are accepted as workflow inputs.
 
 - `diagnose`: container status/image/restart count, recent allowlisted provider error records, Google setup availability, anonymous session and denied paid endpoints. No paid calls.
-- `speech-test`: two short fixed synthesis requests, Russian and English. Reports upstream status/duration and redacted error response. Does not submit user stories, store audio or print credentials. These two calls can incur provider charges.
+- `speech-test`: two short fixed synthesis requests, Russian and English. Uses the production speech adapter to read and validate the complete MP3; reports byte count, duration and redacted upstream failures. Does not submit user stories, store audio or print credentials. These two calls can incur provider charges.
 - `speech-format-test`: two fixed Russian probes (Filipp/OggOpus and Marina/MP3) to isolate format/voice failures. These calls can incur provider charges.
 - `ai-test`: one fixed short prompt (maximum 32 output tokens), then the real story generator with a fixed public Aunesis excerpt and its configured timeout. Reports whether the story passed validation; no user text or generated story is logged. These two requests can incur provider charges.
 - `restart`: recreate the current image with the current server dotenv file, then diagnose.

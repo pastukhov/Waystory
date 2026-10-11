@@ -20,10 +20,16 @@ if(mode==='diagnose'){
   for(const path of ['/api/guide','/api/speech']){const r=await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(5000)});report({probe:path,status:r.status,anonymousDenied:r.status===(s.enabled?401:503)});if(r.status!==(s.enabled?401:503))process.exitCode=1;await r.body?.cancel()}
  }catch{report({probe:'application',error:'unreachable'});process.exitCode=1}
 }else if(mode==='speech-test'){
- const key=env.YANDEX_TTS_API_KEY||env.YANDEX_API_KEY;if(!key){report({probe:'speech',error:'not_configured'});process.exitCode=1}else{
-  for(const [lang,voice,text] of [['ru-RU',env.YANDEX_TTS_VOICE_RU||env.YANDEX_TTS_VOICE||'filipp','Проверка голоса.'],['en-US',env.YANDEX_TTS_VOICE_EN||'john','Voice test.']]){
-   await probe('speech-'+lang,'https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize',{method:'POST',headers:{Authorization:'Api-Key '+key,'Content-Type':'application/x-www-form-urlencoded','x-data-logging-enabled':'false'},body:new URLSearchParams({text,voice,lang,format:'mp3',speed:'1.0'}).toString()});
-  }
+ const {createSpeech}=await import(new URL('./server/tts.mjs','file://'+process.cwd()+'/'));
+ for(const [language,text] of [['ru','Проверка голоса.'],['en','Voice test.']]){
+  const start=Date.now(),name='speech-'+language;
+  const speech=createSpeech({env,fetchFn:async(...args)=>{
+   const response=await fetch(...args);
+   if(!response.ok)report({probe:name+'-upstream',status:response.status,error:await errorBody(response.clone())});
+   return response;
+  }});
+  try{const audio=await speech.run({language,text});report({probe:name,valid:true,bytes:audio.length,durationMs:Date.now()-start})}
+  catch(error){report({probe:name,valid:false,status:error.status||null,error:clean(error.message),durationMs:Date.now()-start});process.exitCode=1}
  }
 }else if(mode==='speech-format-test'){
  const key=env.YANDEX_TTS_API_KEY||env.YANDEX_API_KEY;
