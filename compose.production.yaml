@@ -12,6 +12,8 @@ services:
       PORT: "5173"
     init: true
     restart: unless-stopped
+    volumes:
+      - waystory-data:/app/data
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -23,3 +25,6 @@ networks:
   proxy:
     external: true
     name: ${WAYSTORY_PROXY_NETWORK:-dogovorovoi_default}
+
+volumes:
+  waystory-data:

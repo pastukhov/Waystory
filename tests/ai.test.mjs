@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
-import {createApp} from '../server/index.mjs';
+import {createApp as createProtectedApp} from '../server/index.mjs';
+const createApp=options=>createProtectedApp({...options,auth:{enabled:true,session:()=>({id:'test'}),consume(){}}});
 
 const env={YANDEX_API_KEY:'test-key-never-expose',YANDEX_FOLDER_ID:'test-folder'};
 const place={title:'Казанский собор',source:'https://ru.wikipedia.org/wiki/Казанский_собор',text:'Казанский собор построен в 1801–1811 годах. Архитектор — Андрей Воронихин.'};

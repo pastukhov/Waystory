@@ -7,3 +7,8 @@ __pycache__/
 .runtime/
 artifacts/
 .openai/
+
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

@@ -156,3 +156,7 @@ stories from older versions or other languages regenerate on opening. Estimated
 time uses seconds and minutes. Unavailable detail levels are disabled with a
 source-coverage explanation. GitHub CI tests both language flows in Chromium,
 using deterministic fixtures rather than paid provider requests.
+
+### Google sign-in
+
+Paid AI and speech now require an invited Google account. Follow [Google OAuth setup](docs/google-login.md) to configure the Client ID, secret and allowed emails in the server `.env`. Accounts, sessions and daily request quotas use a persistent Docker volume. With missing OAuth settings paid calls fail closed; public Wikipedia search remains available. Favorites and listening history are still device-local.

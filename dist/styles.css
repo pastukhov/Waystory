@@ -13,3 +13,6 @@
 
 /* Translated labels keep their parent typography; only explicit icons are sized. */
 @media(max-width:780px){.hero-actions{flex-wrap:wrap}.hero-actions .button{flex:1 1 145px;min-width:0;white-space:normal;height:auto;min-height:45px;padding:10px 14px}.hero-actions .button svg{flex:none}.how-it-works{grid-template-columns:repeat(3,minmax(0,1fr))}.how-step{min-width:0;overflow-wrap:anywhere}}
+
+.account-button{border:1px solid var(--line);border-radius:5px;padding:7px 10px;font-size:11px;white-space:nowrap}#account-email{overflow-wrap:anywhere}#google-login{font-size:14px;background:#fff;color:#1f1f1f;border:1px solid #747775;min-height:40px}#account-dialog .dialog-top h2{margin:0}#account-usage{margin-bottom:20px}
+@media(max-width:780px){.topbar{gap:8px}.breadcrumb{min-width:0}.pilot-badge{white-space:nowrap}.account-button{font-size:10px;padding:7px}.topbar .icon-button{flex:none}}

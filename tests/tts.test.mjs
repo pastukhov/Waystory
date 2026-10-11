@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
-import {createApp} from '../server/index.mjs';
+import {createApp as createProtectedApp} from '../server/index.mjs';
+const createApp=options=>createProtectedApp({...options,auth:{enabled:true,session:()=>({id:'test'}),consume(){}}});
 function request(app,body,origin){return new Promise((resolve,reject)=>{const req=Readable.from([JSON.stringify(body)]);Object.assign(req,{url:'/api/speech',method:'POST',headers:{host:'localhost','content-type':'application/json',...(origin?{origin}: {})}});let status;const res={setHeader(){},writeHead:s=>status=s,end:body=>resolve({status,body})};Promise.resolve(app.listeners('request')[0](req,res)).catch(reject)})}
 const env={YANDEX_API_KEY:'secret',YANDEX_FOLDER_ID:'folder',TTS_REQUESTS_PER_HOUR:'1'};
 test('cloud speech returns MP3 and reuses cached text without another paid request',async()=>{let calls=0;const app=createApp({env,fetchFn:async(url,o)=>{calls++;assert.match(url,/tts:synthesize/);assert.equal(new URLSearchParams(o.body).get('format'),'mp3');assert.equal(new URLSearchParams(o.body).has('folderId'),false);return new Response('ID3audio',{headers:{'content-type':'audio/mpeg'}})}});const a=await request(app,{text:'Привет'});assert.equal(a.status,200);assert.equal(a.body.toString(),'ID3audio');assert.equal((await request(app,{text:'Привет'})).status,200);assert.equal(calls,1);assert.equal((await request(app,{text:'Другой текст'})).status,429)});
