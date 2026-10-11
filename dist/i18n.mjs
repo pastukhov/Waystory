@@ -2,6 +2,7 @@ import {LANGUAGE} from './language.mjs';
 
 // Explicit UI catalog: Russian source keys, English equivalents.
 export const messages={
+"Войти, чтобы открыть рассказ":"Sign in to open the story",
 "Войти":"Sign in",
 "Аккаунт":"Account",
 "Продолжить с Google":"Continue with Google",

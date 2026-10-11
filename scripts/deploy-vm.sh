@@ -37,3 +37,18 @@ compose build --pull
 compose up --detach --wait --wait-timeout 150
 compose exec -T waystory node -e \
   "fetch('http://127.0.0.1:5173/api/config').then(r=>{if(!r.ok)process.exit(1);console.log('Waystory is healthy')}).catch(()=>process.exit(1))"
+
+# Probe the deployed instance without cookies. These requests must never reach AI.
+compose exec -T waystory node --input-type=module <<'JS'
+import assert from 'node:assert/strict';
+const base='http://127.0.0.1:5173';
+const session=await (await fetch(base+'/api/session')).json();
+assert.equal(session.user,null);
+const config=await (await fetch(base+'/api/config')).json();
+assert.equal(config.ai,false);
+for(const path of ['/api/guide','/api/speech']){
+ const r=await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+ assert.equal(r.status,session.enabled?401:503,`Anonymous access to ${path} must be denied`);
+ console.log(`Anonymous ${path}: ${r.status}, access denied`);
+}
+JS
