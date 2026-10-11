@@ -2,6 +2,7 @@ import {LANGUAGE} from './language.mjs';
 
 // Explicit UI catalog: Russian source keys, English equivalents.
 export const messages={
+"Облачная озвучка недоступна. Используется голос устройства.":"Cloud narration is unavailable. Using your device voice.",
 "SpeechKit: достигнут лимит сервиса Yandex. Попробуйте позже.":"SpeechKit: Yandex service limit reached. Please try again later.",
 "Сервис озвучки Yandex вернул внутреннюю ошибку. Попробуйте позже.":"Yandex speech service returned an internal error. Please try again later.",
 "Безлимит":"Unlimited",
