@@ -20,6 +20,7 @@ cp "$project_root/Dockerfile" "$project_root/compose.yaml" "$project_root/.docke
 cp -R "$project_root/dist" "$project_root/server" "$smoke_dir/"
 cat > "$smoke_dir/.env" <<'ENV'
 PORT=18080
+MULTISOURCE_ENABLED=false
 HOST=127.0.0.1
 BIND_ADDRESS=127.0.0.1
 WAYSTORY_CI_SECRET='ci-only$not-a-real-secret#sentinel'

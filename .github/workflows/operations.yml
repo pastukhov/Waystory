@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: 'diagnose is free; speech-test makes 2 paid calls; ai-test makes 1'
+        description: 'diagnose/sources-test use no AI/web credits; web-source-test costs up to 2 search calls; AI/speech tests are paid'
         required: true
         default: diagnose
         type: choice
-        options: [diagnose, speech-test, speech-format-test, ai-test, restart, rollback]
+        options: [diagnose, sources-test, web-source-test, speech-test, speech-format-test, ai-test, restart, rollback]
   workflow_run:
     workflows: [Deploy]
     types: [completed]

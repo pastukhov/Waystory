@@ -20,7 +20,7 @@ cleanup() {
   exit "$result"
 }
 trap cleanup EXIT
-printf "WAYSTORY_CI_SECRET='production-test-only'\n" > "$WAYSTORY_ENV_FILE"
+printf "WAYSTORY_CI_SECRET='production-test-only'\nMULTISOURCE_ENABLED=false\n" > "$WAYSTORY_ENV_FILE"
 mkdir -p "$fixture/certs/live/ws.nayg.ru"
 openssl req -x509 -nodes -newkey rsa:2048 -days 1 -subj /CN=ws.nayg.ru \
   -keyout "$fixture/certs/live/ws.nayg.ru/privkey.pem" \
