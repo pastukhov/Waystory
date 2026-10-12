@@ -57,6 +57,8 @@ jobs:
           persist-credentials: false
       - name: Build, start, and check the container
         run: bash scripts/ci-container-smoke.sh
+      - name: Validate metrics, vmalert rules and Grafana import
+        run: bash scripts/ci-monitoring-smoke.sh
       - name: Check production network and HTTPS proxy
         run: bash scripts/ci-production-smoke.sh
 

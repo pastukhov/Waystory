@@ -59,3 +59,6 @@ test('abort classification and arbitrary labels do not invent successful calls',
  obs.record('cache',{cache:'email@example.com',result:'private'});obs.record('stage',{stage:'private',outcome:'secret'});
  assert.match(obs.render(),/provider="tavily",operation="search",status="none",outcome="cancelled"/);assert.ok(!obs.render().includes('private'));assert.ok(!obs.render().includes('email@'));
 });
+test('process start gauge stays constant across repeated scrapes',()=>{
+ const obs=createObservability({env:{},write:()=>{}});const values=new Set(Array.from({length:15},()=>obs.render().match(/^waystory_process_start_time_seconds (.+)$/m)[1]));assert.equal(values.size,1);
+});

@@ -23,3 +23,13 @@ test('missing GitHub secret preserves the manually installed key during migratio
 test('invalid secret fails before any file mutation and is not logged',()=>{
  const original='TAVILY_API_KEY=old\n';const r=run(original,'bad\nINJECTED=true');assert.notEqual(r.status,0);assert.equal(r.output,original);assert.ok(!(r.stdout+r.stderr).includes('INJECTED'));
 });
+test('optional Actions metrics token is delivered privately and preserved when absent',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'waystory-metrics-env-')),file=join(dir,'.env'),token='metrics-test-0123456789abcdef0123456789';
+ try{
+  writeFileSync(file,'YANDEX_API_KEY=preserve\n');
+  const first=spawnSync('python3',['scripts/sync-deploy-settings.py',file],{encoding:'utf8',env:{...process.env,WAYSTORY_TAVILY_SECRET:'',WAYSTORY_METRICS_SECRET:token}});
+  assert.equal(first.status,0,first.stderr);assert.ok(readFileSync(file,'utf8').includes('METRICS_TOKEN='+token));assert.ok(!(first.stdout+first.stderr).includes(token));
+  const second=spawnSync('python3',['scripts/sync-deploy-settings.py',file],{encoding:'utf8',env:{...process.env,WAYSTORY_TAVILY_SECRET:'',WAYSTORY_METRICS_SECRET:''}});assert.equal(second.status,0);assert.ok(readFileSync(file,'utf8').includes('METRICS_TOKEN='+token));
+  const before=readFileSync(file,'utf8');const bad=spawnSync('python3',['scripts/sync-deploy-settings.py',file],{encoding:'utf8',env:{...process.env,WAYSTORY_METRICS_SECRET:'weak'}});assert.notEqual(bad.status,0);assert.equal(readFileSync(file,'utf8'),before);
+ }finally{rmSync(dir,{recursive:true,force:true})}
+});

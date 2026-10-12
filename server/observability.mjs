@@ -121,7 +121,7 @@ export function createObservability({env=process.env,write=line=>console.log(lin
   }},
   render(){
    const memory=process.memoryUsage(),cpu=process.cpuUsage();
-   for(const [name,value] of Object.entries({process_start_time_seconds:(Date.now()/1000)-process.uptime(),process_uptime_seconds:process.uptime(),process_resident_memory_bytes:memory.rss,process_heap_used_bytes:memory.heapUsed,process_cpu_seconds_total:(cpu.user+cpu.system)/1e6}))update(name,{},value,'set');
+   for(const [name,value] of Object.entries({process_start_time_seconds:performance.timeOrigin/1000,process_uptime_seconds:process.uptime(),process_resident_memory_bytes:memory.rss,process_heap_used_bytes:memory.heapUsed,process_cpu_seconds_total:(cpu.user+cpu.system)/1e6}))update(name,{},value,'set');
    let budget;try{budget=budgetSnapshot?.()}catch{}
    const available=budget&&Number.isSafeInteger(budget.limit)&&budget.limit>=0&&Number.isSafeInteger(budget.remaining)&&budget.remaining>=0&&budget.remaining<=budget.limit;
    update('tavily_budget_available',{},available?1:0,'set');
