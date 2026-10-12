@@ -92,7 +92,7 @@ test('client cancellation is passed to Yandex without leaking internal errors',a
 test('story language is explicit, localized title returned and cache separates languages',async()=>{
  let calls=0;const app=createApp({env,fetchFn:async(url,o)=>{calls++;const b=JSON.parse(o.body);assert.match(b.messages[0].content,/English|русск/);return provider({...story,title:calls===1?'Казанский собор':'Kazan Cathedral'})()}});
  const ru=await request(app,'/api/guide',{action:'story',place,language:'ru'});const en=await request(app,'/api/guide',{action:'story',place,language:'en'});
- assert.equal(calls,2);assert.equal(ru.json().title,'Казанский собор');assert.equal(en.json().language,'en');assert.equal(en.json().storyVersion,3);
+ assert.equal(calls,2);assert.equal(ru.json().title,'Казанский собор');assert.equal(en.json().language,'en');assert.equal(en.json().storyVersion,4);
 });
 test('short sources can return only the essential story instead of inventing detail',async()=>{
  const app=createApp({env,fetchFn:provider({title:'Казанский собор',blocks:[story.blocks[0]]})});const r=await request(app,'/api/guide',{action:'story',place});assert.equal(r.status,200);assert.equal(r.json().blocks.length,1);assert.equal(r.json().detailLimited,true);
@@ -104,3 +104,4 @@ test('near-identical length tiers and out-of-order story sections are rejected',
 test('batch translation returns only requested IDs and localized text',async()=>{const app=createApp({env,fetchFn:provider({places:[{id:'wiki-en-1',title:'Красная башня',subtitle:'Башня в Аланье'}]})});const r=await request(app,'/api/guide',{action:'translatePlaces',language:'ru',places:[{id:'wiki-en-1',title:'Red Tower',subtitle:'Tower in Alanya'}]});assert.equal(r.status,200);assert.equal(r.json().places[0].title,'Красная башня')});
 test('unsupported language cannot silently generate or bill in another language',async()=>{let calls=0;const app=createApp({env,fetchFn:async()=>{calls++;return provider()()}});assert.equal((await request(app,'/api/guide',{action:'story',place,language:'tr'})).status,400);assert.equal(calls,0)});
 test('unlimited mode removes the AI hourly ceiling',async()=>{const {createGuide}=await import('../server/guide.mjs');let calls=0;const guide=createGuide({...guideFixture,env:{...env,AUTHENTICATED_REQUESTS_UNLIMITED:undefined,AI_REQUESTS_PER_HOUR:'1'},fetchFn:async()=>{calls++;return provider({text:'Ответ.'})()}});for(let i=0;i<3;i++)await guide.run({action:'question',place,question:'Кто архитектор?',heard:[]});assert.equal(calls,3)});
+
