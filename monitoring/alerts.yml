@@ -11,7 +11,7 @@ groups:
           summary: 'Waystory scrape unavailable: {{ $labels.instance }}'
           description: 'Check application, network and METRICS_TOKEN. This does not distinguish a scrape credential failure from application downtime.'
       - alert: WaystoryProviderAccessDenied
-        expr: sum by (job, instance, provider) (increase(waystory_provider_requests_total{job="waystory",status=~"401|403"}[15m])) >= 2
+        expr: sum by (job, instance, provider) (increase(waystory_provider_access_denied_total{job="waystory"}[15m])) >= 2
         for: 1m
         labels:
           severity: warning

@@ -18,6 +18,7 @@ export const metricDefinitions={
  http_requests_total:['counter','HTTP responses and disconnected requests',['route','method','status']],
  http_request_duration_seconds:['histogram','HTTP request lifetime including response body',['route','method']],
  http_in_flight:['gauge','Current non-metrics HTTP requests',[]],
+ provider_access_denied_total:['counter','Observed provider HTTP 401 or 403 responses; initialized at startup',['provider']],
  provider_requests_total:['counter','Provider HTTP attempts; success means HTTP 2xx, not accepted content',['provider','operation','status','outcome']],
  provider_request_duration_seconds:['histogram','Provider HTTP time to response headers, not body completion',['provider','operation']],
  provider_last_success_timestamp_seconds:['gauge','Last observed HTTP 2xx since process start; zero means none',['provider']],
@@ -73,7 +74,7 @@ export function createObservability({env=process.env,write=line=>console.log(lin
  function record(event,f={}){
   if(event==='provider'){
    const provider=pick(f.provider,providers,'osm'),operation=pick(f.operation,operations),code=status(f.status),outcome=pick(f.outcome,['success','error','timeout','cancelled'],'error'),duration=number(f.durationMs)/1000;
-   update('provider_requests_total',{provider,operation,status:code,outcome},1);update('provider_request_duration_seconds',{provider,operation},duration);
+   update('provider_requests_total',{provider,operation,status:code,outcome},1);if(code==='401'||code==='403')update('provider_access_denied_total',{provider},1);update('provider_request_duration_seconds',{provider,operation},duration);
    update('provider_last_status_code',{provider},code==='none'?0:Number(code),'set');
    if(outcome==='success')update('provider_last_success_timestamp_seconds',{provider},now()/1000,'set');
    log('provider',{provider,operation,status:code==='none'?null:Number(code),outcome,durationMs:Math.round(duration*1000)});
@@ -97,7 +98,10 @@ export function createObservability({env=process.env,write=line=>console.log(lin
   }else if(event==='tts')update('tts_characters_requested_total',{},number(f.characters,1600));
   else if(event==='configured'&&providers.includes(f.provider))update('provider_configured',{provider:f.provider},f.enabled===true?1:0,'set');
  }
- for(const provider of providers){update('provider_last_success_timestamp_seconds',{provider},0,'set');update('provider_last_status_code',{provider},0,'set');update('provider_configured',{provider},0,'set')}
+ for(const provider of providers){update('provider_access_denied_total',{provider},0);update('provider_last_success_timestamp_seconds',{provider},0,'set');update('provider_last_status_code',{provider},0,'set');update('provider_configured',{provider},0,'set')}
+ for(const stage of stages)for(const outcome of outcomes)update('stage_operations_total',{stage,outcome},0);
+ for(const operation of operations){update('ai_usage_missing_total',{operation},0);for(const kind of ['input','output'])update('ai_tokens_total',{operation,kind},0)}
+ update('tts_characters_requested_total',{},0);
  update('http_in_flight',{},0,'set');
  const revision=/^[a-zA-Z0-9:._-]{1,100}$/.test(env.WAYSTORY_REVISION||'')?env.WAYSTORY_REVISION:'unknown';update('build_info',{revision},1,'set');
  const observer={record,

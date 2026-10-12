@@ -1,0 +1,44 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 30s
+tests:
+  - name: first access failures after a zero scrape trigger the alert
+    interval: 1m
+    input_series:
+      - series: 'waystory_provider_access_denied_total{job="waystory",instance="test",provider="tavily"}'
+        values: '0 2 2 2'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: WaystoryProviderAccessDenied
+        exp_alerts:
+          - exp_labels:
+              job: waystory
+              instance: test
+              provider: tavily
+              severity: warning
+            exp_annotations:
+              summary: 'Provider rejects Waystory access: tavily'
+              description: 'At least two observed 401/403 responses in 15 minutes. Inspect correlated provider logs; do not infer that the key or IP is the cause from status alone.'
+  - name: idle service does not invent access failures or restarts
+    interval: 1m
+    input_series:
+      - series: 'waystory_provider_access_denied_total{job="waystory",instance="test",provider="tavily"}'
+        values: '0+0x40'
+      - series: 'waystory_process_start_time_seconds{job="waystory",instance="test"}'
+        values: '1000+0x40'
+      - series: 'waystory_tavily_daily_calls_limit{job="waystory",instance="test"}'
+        values: '0+0x40'
+      - series: 'waystory_tavily_daily_calls_remaining{job="waystory",instance="test"}'
+        values: '0+0x40'
+      - series: 'waystory_provider_configured{job="waystory",instance="test",provider="tavily"}'
+        values: '1+0x40'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: WaystoryProviderAccessDenied
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: WaystoryRepeatedRestarts
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: WaystoryTavilyBudgetLow
+        exp_alerts: []

@@ -1,6 +1,6 @@
 import {observe} from './request-context.mjs';
 import {stripSourceCitations} from '../dist/speech-text.mjs';
-import {reviewGrounding} from './sources/facts.mjs';
+import {reviewGroundingOutcome} from './sources/facts.mjs';
 import {legacyReference,modelDocuments,citationMetadata,validateCitations} from './sources/evidence.mjs';
 import {sourcePolicy} from './sources/policies.mjs';
 import {providerFailure} from './diagnostics.mjs';
@@ -146,7 +146,7 @@ export function createGuide({env=process.env,fetchFn=fetch,now=Date.now,collectS
    if(choice?.finish_reason!=='stop'||typeof choice.message?.content!=='string')throw upstream();
    const data=JSON.parse(choice.message.content);
    if(input.bundle){const ids=input.action==='story'?data.blocks?.map(b=>b.sourceIds):[data.sourceIds];if(!ids?.length||!ids.every(x=>validateCitations(x,input.bundle)))throw upstream()}
-   if(input.bundle&&(modelDocuments(input.bundle).length>1||input.bundle.documents.some(d=>d.provider==='global-web'))){if(!await reviewGrounding(data,modelDocuments(input.bundle),{fetchFn,model:models[input.action],signal:signal?AbortSignal.any([signal,deadline]):deadline,headers:{Authorization:'Api-Key '+env.YANDEX_API_KEY,'OpenAI-Project':env.YANDEX_FOLDER_ID,'Content-Type':'application/json','x-data-logging-enabled':'false'}})){rejected=true;throw upstream()}}
+   if(input.bundle&&(modelDocuments(input.bundle).length>1||input.bundle.documents.some(d=>d.provider==='global-web'))){const reviewOutcome=await reviewGroundingOutcome(data,modelDocuments(input.bundle),{fetchFn,model:models[input.action],signal:signal?AbortSignal.any([signal,deadline]):deadline,headers:{Authorization:'Api-Key '+env.YANDEX_API_KEY,'OpenAI-Project':env.YANDEX_FOLDER_ID,'Content-Type':'application/json','x-data-logging-enabled':'false'}});if(reviewOutcome!=='success'){rejected=reviewOutcome==='rejected';throw upstream()}}
    if(['story','question'].includes(input.action)){if(typeof data.title==='string')data.title=stripSourceCitations(data.title);for(const block of data.blocks||[]){if(typeof block.text==='string')block.text=stripSourceCitations(block.text);if(typeof block.title==='string')block.title=stripSourceCitations(block.title)}if(typeof data.text==='string')data.text=stripSourceCitations(data.text)}
    const value=result(input,data);
    if(input.bundle){value.evidenceScope=input.bundle.outcome==='context_only'?'area':'place';value.sourceOutcome=input.bundle.outcome||'ready';value.sources=citationMetadata(input.bundle);value.placeId=input.placeId;value.fingerprint=input.bundle.fingerprint;const licenses=modelDocuments(input.bundle).map(d=>sourcePolicy(d.license.policyId).outputLicense);value.outputLicense=licenses.includes('CC-BY-SA-4.0')?'CC-BY-SA-4.0':licenses.find(Boolean)||null;if(value.blocks)value.blocks=value.blocks.map(b=>({...b,id:b.id+'-'+input.bundle.fingerprint.slice(0,12)}))}

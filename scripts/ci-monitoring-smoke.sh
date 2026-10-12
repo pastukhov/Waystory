@@ -18,6 +18,7 @@ console.log(o.render());
 JS
 docker run --rm -i --entrypoint /bin/promtool "$prom_image" check metrics < "$work/metrics.txt"
 docker run --rm --user 0:0 -v "$root/monitoring:/rules:ro" --entrypoint /bin/promtool "$prom_image" check rules /rules/alerts.yml
+docker run --rm --user 0:0 -v "$root/monitoring:/rules:ro" -w /rules --entrypoint /bin/promtool "$prom_image" test rules alerts.test.yml
 docker run --rm --user 0:0 -v "$root/monitoring:/rules:ro" "$vm_image" -rule=/rules/alerts.yml -dryRun
 # Parse every dashboard expression with the same PromQL parser used for rules.
 node --input-type=module > "$work/dashboard-rules.json" <<'JS'

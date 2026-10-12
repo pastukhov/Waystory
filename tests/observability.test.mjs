@@ -62,3 +62,20 @@ test('abort classification and arbitrary labels do not invent successful calls',
 test('process start gauge stays constant across repeated scrapes',()=>{
  const obs=createObservability({env:{},write:()=>{}});const values=new Set(Array.from({length:15},()=>obs.render().match(/^waystory_process_start_time_seconds (.+)$/m)[1]));assert.equal(values.size,1);
 });
+test('access-denied alert counter exists at zero before the first provider failure',async()=>{
+ const obs=createObservability({env:{},write:()=>{}});
+ assert.match(obs.render(),/waystory_provider_access_denied_total\{provider="tavily"\} 0/);
+ for(let i=0;i<2;i++)await obs.wrapFetch(async()=>new Response('',{status:403}))('https://api.tavily.com/search');
+ assert.match(obs.render(),/waystory_provider_access_denied_total\{provider="tavily"\} 2/);
+});
+test('generation preserves technical review errors separately from content rejection',async()=>{
+ for(const technical of [true,false]){
+  const obs=createObservability({env:{},write:()=>{}});let calls=0;
+  const guide=createGuide({env:{YANDEX_API_KEY:'secret',YANDEX_FOLDER_ID:'folder'},collectSources:async()=>{const bundle=await guideFixture.collectSources();bundle.documents.push({...bundle.documents[0],id:'fixture2'});return bundle},fetchFn:obs.wrapFetch(async()=>{
+   if(++calls===2)return technical?new Response('',{status:503}):Response.json({choices:[{finish_reason:'stop',message:{content:'{"supported":false,"items":[]}'}}]});
+   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({title:'Собор',blocks:[{title:'История',depth:0,text:'Казанский собор построен в 1801–1811 годах.',sourceIds:['fixture']}]})}}]});
+  })});
+  await assert.rejects(obs.run(()=>guide.run({action:'story',placeId:'wiki:ru:1'})));
+  assert.equal(calls,2);assert.match(obs.render(),new RegExp('waystory_stage_operations_total\\{stage="generation",outcome="'+(technical?'error':'rejected')+'"\\} 1'));
+ }
+});

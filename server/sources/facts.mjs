@@ -10,9 +10,11 @@ async function runReview(story,documents,{fetchFn,headers,model,signal}){
  if(!response.ok)return null;const result=await response.json();observe('usage',{operation:'review',usage:result.usage});if(result.choices?.[0]?.finish_reason!=='stop')return null;try{return validateSupport(story,documents,JSON.parse(result.choices[0].message.content))}catch{return null}
 }
 
-export async function reviewGrounding(story,documents,options){
+export async function reviewGroundingOutcome(story,documents,options){
  const started=Date.now();let outcome='error';
- try{const result=await runReview(story,documents,options);outcome=result===true?'success':result===false?'rejected':'error';return result===true}
+ try{const result=await runReview(story,documents,options);outcome=result===true?'success':result===false?'rejected':'error';return outcome}
  catch(error){outcome=options.signal?.aborted?(options.signal.reason?.name==='TimeoutError'?'timeout':'cancelled'):'error';throw error}
  finally{observe('stage',{stage:'review',outcome,durationMs:Date.now()-started})}
 }
+
+export async function reviewGrounding(story,documents,options){return await reviewGroundingOutcome(story,documents,options)==='success'}

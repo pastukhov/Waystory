@@ -44,9 +44,11 @@ Files: monitoring/{grafana-dashboard.json,alerts.yml,vmagent.yml}, docs/observab
 
 ## Validation ledger
 
-- Local application suite: 227 passing tests.
+- Local application suite: 229 passing tests.
 - promtool 3.2.1: exposition, six alert rules and all 29 dashboard queries pass.
 - vmalert 1.115.0: rule dry run passes.
 - Grafana 11.6.0: real HTTP import and saved-dashboard round trip pass.
 - Syntax, image history and settings import checks pass.
 - Branch review, GitHub CI and deployment tracked in the pull request.
+- Whole-branch review: two findings fixed and verified (initial access failures and technical review outcome).
+- Promtool behavioral tests: initial 403s alert; idle counters, stable start time and zero budget do not alert.

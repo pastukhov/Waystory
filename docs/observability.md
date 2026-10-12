@@ -62,6 +62,10 @@ The instance label should stay stable across container restarts.
 
 - `http_requests_total`, `http_request_duration_seconds`: complete server request
   lifetime, normalized routes. Scrapes are excluded. A disconnected response is 499.
+- `provider_access_denied_total`: preinitialized per-provider 401/403 counter for
+  access-denied alerts, including the first failures after a successful scrape.
+  Sparse detailed HTTP series only appear after their first event; `rate`/`increase`
+  cannot recover events before that first sample.
 - `provider_requests_total`: individual outbound HTTP attempts, not logical stories.
   `success` means HTTP 2xx only. Duration measures time to response headers, while
   domain-stage duration includes parsing/validation/body reading. `none` status
