@@ -1,0 +1,52 @@
+groups:
+  - name: waystory
+    interval: 30s
+    rules:
+      - alert: WaystoryScrapeDown
+        expr: up{job="waystory"} == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Waystory scrape unavailable: {{ $labels.instance }}'
+          description: 'Check application, network and METRICS_TOKEN. This does not distinguish a scrape credential failure from application downtime.'
+      - alert: WaystoryProviderAccessDenied
+        expr: sum by (job, instance, provider) (increase(waystory_provider_access_denied_total{job="waystory"}[15m])) >= 2
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Provider rejects Waystory access: {{ $labels.provider }}'
+          description: 'At least two observed 401/403 responses in 15 minutes. Inspect correlated provider logs; do not infer that the key or IP is the cause from status alone.'
+      - alert: WaystoryHttpErrors
+        expr: (sum by (job, instance) (rate(waystory_http_requests_total{job="waystory",route=~"/api/(guide|speech|places/.*)",status=~"5.."}[10m])) / sum by (job, instance) (rate(waystory_http_requests_total{job="waystory",route=~"/api/(guide|speech|places/.*)"}[10m])) > 0.1) and (sum by (job, instance) (increase(waystory_http_requests_total{job="waystory",route=~"/api/(guide|speech|places/.*)"}[10m])) >= 20)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Waystory HTTP error ratio above 10%'
+          description: 'At least 20 requests in 10 minutes. Source coverage failures (422), authentication failures and client cancellations are excluded from the numerator.'
+      - alert: WaystoryGenerationSlow
+        expr: (histogram_quantile(0.95, sum by (job, instance, le) (rate(waystory_stage_duration_seconds_bucket{job="waystory",stage="generation"}[15m]))) > 45) and (sum by (job, instance) (increase(waystory_stage_duration_seconds_count{job="waystory",stage="generation"}[15m])) >= 10)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Waystory generation p95 exceeds 45 seconds'
+          description: 'At least 10 generation operations in 15 minutes. Check provider and review latency; cache hits are not generation operations.'
+      - alert: WaystoryTavilyBudgetLow
+        expr: (waystory_tavily_daily_calls_remaining{job="waystory"} / waystory_tavily_daily_calls_limit{job="waystory"} <= 0.2) and (waystory_tavily_daily_calls_limit{job="waystory"} > 0) and on(job,instance) (waystory_provider_configured{job="waystory",provider="tavily"} == 1)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Waystory Tavily daily call budget below 20%'
+          description: 'Application reservations only, not Tavily account credits. Resets at UTC midnight.'
+      - alert: WaystoryRepeatedRestarts
+        expr: changes(waystory_process_start_time_seconds{job="waystory"}[30m]) >= 3
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Waystory restarted at least three times in 30 minutes'
+          description: 'Check deployment activity, container state and memory. Requires stable instance labels across restarts.'

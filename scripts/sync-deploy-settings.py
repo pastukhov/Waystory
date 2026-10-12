@@ -11,6 +11,9 @@ def sync(path):
     secret = os.environ.get('WAYSTORY_TAVILY_SECRET', '')
     if secret and not re.fullmatch(r'[A-Za-z0-9_-]{10,512}', secret):
         raise ValueError('Invalid Tavily secret format')
+    metrics_secret = os.environ.get('WAYSTORY_METRICS_SECRET', '')
+    if metrics_secret and not re.fullmatch(r'[A-Za-z0-9_-]{32,512}', metrics_secret):
+        raise ValueError('Invalid metrics secret format')
     path = Path(path)
     if path.is_symlink() or not path.is_file():
         raise ValueError('Expected a regular environment file')
@@ -27,6 +30,8 @@ def sync(path):
     # Empty Actions secrets must not erase the existing VM credential.
     if secret:
         updates['TAVILY_API_KEY'] = secret
+    if metrics_secret:
+        updates['METRICS_TOKEN'] = metrics_secret
     lines = []
     for line in original.splitlines(keepends=True):
         match = re.match(r'^\s*(?:export\s+)?([A-Z_][A-Z0-9_]*)\s*=', line)

@@ -8,6 +8,7 @@ services:
       - ${WAYSTORY_ENV_FILE:-/opt/waystory/.env}
     environment:
       NODE_ENV: production
+      WAYSTORY_REVISION: ${WAYSTORY_IMAGE:-waystory:local}
       HOST: 0.0.0.0
       PORT: "5173"
     logging:
