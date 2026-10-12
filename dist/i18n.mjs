@@ -10,6 +10,7 @@ export const messages={
 "Лимит поиска официальных материалов исчерпан.":"Official source search budget is exhausted.",
 "Дополнительных материалов не найдено.":"No additional materials found.",
 "Источники":"Sources",
+"Авторы и лицензии":"Authors and licences",
 "Региональный контекст":"Regional context",
 "Об этом месте":"About this place",
 "Опубликовано:":"Published:",
