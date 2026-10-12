@@ -1,3 +1,4 @@
+import {observe} from './request-context.mjs';
 import {providerFailure} from './diagnostics.mjs';
 import {createHash} from 'node:crypto';
 import {GuideError} from './guide.mjs';
@@ -20,13 +21,15 @@ export function createSpeech({env=process.env,fetchFn=fetch,now=Date.now}={}){
   const body=new URLSearchParams({text,voice,lang,format:'mp3',speed:'1.0'}).toString();
   if(Buffer.byteLength(body)>15000)throw new GuideError(400,'Фрагмент слишком длинный для озвучки.');
   const id=createHash('sha256').update(body).digest('hex'),cached=cache.get(id);
-  if(cached&&now()-cached.time<86400000)return cached.audio;
+  if(cached&&now()-cached.time<86400000){observe('cache',{cache:'speech',result:'hit'});return cached.audio;}
+  observe('cache',{cache:'speech',result:'miss'});
   if(cached){bytes-=cached.audio.length;cache.delete(id)}
   if(now()-start>=3600000){start=now();calls=0}
   if((env.AUTHENTICATED_REQUESTS_UNLIMITED==='false'&&calls>=limit)||active>=2)throw new GuideError(429,'Озвучка временно занята или достигнут часовой лимит. Попробуйте позже.');
   signal?.throwIfAborted();calls++;active++;
   const started=Date.now();let providerStatus=null,succeeded=false;
   try{
+   observe('tts',{characters:[...text].length});
    const response=await fetchFn('https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize',{method:'POST',headers:{Authorization:'Api-Key '+key,'Content-Type':'application/x-www-form-urlencoded','x-data-logging-enabled':'false'},body,signal:AbortSignal.any([AbortSignal.timeout(30000),...(signal?[signal]:[])])});
    providerStatus=response.status;
    if(response.status===401||response.status===403)throw new GuideError(503,'Нет доступа к SpeechKit. Проверьте роль ai.speechkit-tts.user и разрешение API-ключа на синтез речи.');
@@ -39,7 +42,7 @@ export function createSpeech({env=process.env,fetchFn=fetch,now=Date.now}={}){
    if(audio.length<3||!(audio.subarray(0,3).toString()==='ID3'||(audio[0]===255&&(audio[1]&224)===224)))throw new GuideError(502,'SpeechKit вернул некорректное аудио.');
    while(cache.size&&(bytes+audio.length>32*1024*1024||cache.size>=100)){const oldest=cache.keys().next().value;bytes-=cache.get(oldest).audio.length;cache.delete(oldest)}
    cache.set(id,{audio,time:now()});bytes+=audio.length;succeeded=true;return audio;
-  }catch(e){if(e instanceof GuideError)throw e;throw new GuideError(signal?.aborted?499:502,signal?.aborted?'Озвучка отменена.':'Не удалось получить озвучку. Попробуйте позже.')}finally{active--;if(!succeeded&&!signal?.aborted)providerFailure('speech',providerStatus,Date.now()-started)}
+  }catch(e){if(e instanceof GuideError)throw e;throw new GuideError(signal?.aborted?499:502,signal?.aborted?'Озвучка отменена.':'Не удалось получить озвучку. Попробуйте позже.')}finally{active--;observe('stage',{stage:'speech',outcome:succeeded?'success':signal?.aborted?'cancelled':'error',durationMs:Date.now()-started});if(!succeeded&&!signal?.aborted)providerFailure('speech',providerStatus,Date.now()-started)}
  }};
 }
 
