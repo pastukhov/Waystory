@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
 import {createApp as createProtectedApp} from '../server/index.mjs';
+import {createSpeech} from '../server/tts.mjs';
+import {createObservability} from '../server/observability.mjs';
 const createApp=options=>createProtectedApp({sourceDbPath:':memory:',...options,auth:{enabled:true,session:()=>({id:'test'}),consume(){}}});
 function request(app,body,origin){return new Promise((resolve,reject)=>{const req=Readable.from([JSON.stringify(body)]);Object.assign(req,{url:'/api/speech',method:'POST',headers:{host:'localhost','content-type':'application/json',...(origin?{origin}: {})}});let status;const res={setHeader(){},writeHead:s=>status=s,end:body=>resolve({status,body})};Promise.resolve(app.listeners('request')[0](req,res)).catch(reject)})}
 const env={AUTHENTICATED_REQUESTS_UNLIMITED:'false',YANDEX_API_KEY:'secret',YANDEX_FOLDER_ID:'folder',TTS_REQUESTS_PER_HOUR:'1'};
@@ -18,3 +20,17 @@ test('population grouping is removed before synthesis while the year stays intac
 });
 test('unlimited mode removes speech hourly counts but still rejects concurrent overload',async()=>{const {createSpeech}=await import('../server/tts.mjs');let resolveFetch;const speech=createSpeech({env:{...env,AUTHENTICATED_REQUESTS_UNLIMITED:undefined},fetchFn:()=>new Promise(r=>resolveFetch=r)});const first=speech.run({text:'One'});resolveFetch(new Response('ID3audio'));await first;const second=speech.run({text:'Two'});const resolveSecond=resolveFetch;const third=speech.run({text:'Three'});const resolveThird=resolveFetch;await assert.rejects(speech.run({text:'Four'}),{status:429});resolveSecond(new Response('ID3audio'));resolveThird(new Response('ID3audio'));await Promise.all([second,third])});
 test('Yandex service failures are distinguished from local quota and permission errors',async()=>{for(const [status,expected,pattern] of [[500,502,/внутреннюю ошибку/],[429,429,/лимит сервиса Yandex/]]){const app=createApp({env,fetchFn:async()=>new Response('private provider body',{status})});const r=await request(app,{text:'Тест'});assert.equal(r.status,expected);assert.match(r.body.toString(),pattern);assert.doesNotMatch(r.body.toString(),/private provider/)}});
+test('SpeechKit internal timeout is classified as timeout in provider and speech stage metrics',async()=>{
+ const originalTimeout=AbortSignal.timeout;
+ const timeoutSignal=AbortSignal.abort(new DOMException('deadline exceeded','TimeoutError'));
+ AbortSignal.timeout=()=>timeoutSignal;
+ try{
+  const obs=createObservability({env:{},write:()=>{}});
+  const speech=createSpeech({env:{YANDEX_TTS_API_KEY:'secret'},fetchFn:obs.wrapFetch(async(_url,{signal})=>{signal.throwIfAborted()})});
+  await assert.rejects(obs.run(()=>speech.run({text:'Timeout test'})),{status:502});
+  const metrics=obs.render();
+  assert.match(metrics,/waystory_provider_requests_total\{provider="yandex_tts",operation="speech",status="none",outcome="timeout"\} 1/);
+  assert.match(metrics,/waystory_stage_operations_total\{stage="speech",outcome="timeout"\} 1/);
+  assert.doesNotMatch(metrics,/waystory_stage_operations_total\{stage="speech",outcome="error"\} 1/);
+ }finally{AbortSignal.timeout=originalTimeout}
+});

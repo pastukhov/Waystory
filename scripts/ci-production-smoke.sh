@@ -20,7 +20,7 @@ cleanup() {
   exit "$result"
 }
 trap cleanup EXIT
-printf "WAYSTORY_CI_SECRET='production-test-only'\nMULTISOURCE_ENABLED=false\n" > "$WAYSTORY_ENV_FILE"
+printf "WAYSTORY_CI_SECRET='production-test-only'\nMETRICS_TOKEN='0123456789abcdef0123456789abcdef'\nMULTISOURCE_ENABLED=false\n" > "$WAYSTORY_ENV_FILE"
 mkdir -p "$fixture/certs/live/ws.nayg.ru"
 openssl req -x509 -nodes -newkey rsa:2048 -days 1 -subj /CN=ws.nayg.ru \
   -keyout "$fixture/certs/live/ws.nayg.ru/privkey.pem" \
@@ -29,7 +29,16 @@ docker network create "$project" >/dev/null
 compose config --quiet
 compose up --build --detach --wait --wait-timeout 150
 container_id="$(compose ps -q waystory)"
-test "$(docker inspect --format '{{len .HostConfig.PortBindings}}' "$container_id")" = 0
+docker inspect --format '{{json .HostConfig.PortBindings}}' "$container_id" | python3 -c 'import json,sys; bindings=json.load(sys.stdin); assert bindings["5173/tcp"] == [{"HostIp":"0.0.0.0","HostPort":"5173"}], bindings'
+node --input-type=module <<'JS'
+import assert from 'node:assert/strict';
+const base='http://127.0.0.1:5173';
+assert.equal((await fetch(base+'/metrics')).status,401);
+const metrics=await fetch(base+'/metrics',{headers:{Authorization:'Bearer 0123456789abcdef0123456789abcdef'}});
+assert.equal(metrics.status,200);
+assert.match(await metrics.text(),/waystory_process_resident_memory_bytes/);
+console.log('Published all-interface metrics endpoint enforces bearer authorization.');
+JS
 docker run --detach --name "$project-proxy" --network "$project" --network-alias gateway \
   -v "$PWD/deploy/nginx/waystory.conf:/etc/nginx/conf.d/default.conf:ro" \
   -v "$fixture/certs:/etc/letsencrypt:ro" nginx:1.27-alpine
