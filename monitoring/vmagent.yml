@@ -1,14 +1,15 @@
 # Merge this job into existing vmagent/Prometheus configuration.
-# Replace the target with an address reachable from your monitoring network.
+# Replace with the Waystory host's VPN address. TCP/5173 is published on all
+# host interfaces; firewall it so only the monitoring host can reach it.
 # Keep the token file outside git; it must match Waystory's METRICS_TOKEN.
 scrape_configs:
   - job_name: waystory
     scrape_interval: 30s
     scrape_timeout: 10s
     metrics_path: /metrics
-    scheme: https
+    scheme: http
     authorization:
       type: Bearer
       credentials_file: /etc/vmagent/secrets/waystory-metrics-token
     static_configs:
-      - targets: ['ws.nayg.ru']
+      - targets: ['REPLACE_WITH_WAYSTORY_VPN_IP:5173']

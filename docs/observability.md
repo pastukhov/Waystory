@@ -14,10 +14,12 @@ does not connect to, install or modify your monitoring infrastructure.
 2. Store the same token in a protected file on the monitoring host, for example
    `/etc/vmagent/secrets/waystory-metrics-token` (readable only by vmagent).
 3. Merge [vmagent.yml](../monitoring/vmagent.yml) into your existing scrape config.
-   The example uses HTTPS `ws.nayg.ru`; use a private reachable address if available.
-   Prefer an ingress/network rule allowing `/metrics` only from monitoring hosts.
-   The application additionally checks the token regardless of source address.
-   Do not disable certificate validation. Do not put the token in the URL.
+   Production Compose publishes TCP/5173 on `0.0.0.0` so a collector can connect
+   over the VPN. Replace the example target with the host's VPN IP. This direct
+   private endpoint uses HTTP; allow TCP/5173 in the host firewall only from the
+   monitoring host over the VPN. The application additionally requires the token.
+   Do not put the token in the URL. The public HTTPS endpoint through nginx remains
+   available if you prefer to scrape through that route.
 4. Reload the collector. In VictoriaMetrics query `up{job="waystory"}`: expect 1.
 5. Import [grafana-dashboard.json](../monitoring/grafana-dashboard.json) into Grafana.
    Choose your VictoriaMetrics **Prometheus-compatible datasource** in the dashboard
@@ -30,8 +32,9 @@ does not connect to, install or modify your monitoring infrastructure.
 Without METRICS_TOKEN, `/metrics` returns 404. With it, missing or wrong bearer
 authorization returns 401. Cookies and query parameters do not grant access.
 Only authenticated GET is supported. Scrape responses have `Cache-Control: no-store`.
-No additional host port is opened by this change. Deployment success does not
-prove that a remote collector can reach the endpoint; that final check is yours.
+Deployment publishes port 5173 on all host interfaces, so firewall access to this
+port to the VPN monitoring host. Deployment success does not prove that a remote
+collector can reach the endpoint; verify the target after deployment.
 
 To test from the collector without placing the token in process arguments:
 

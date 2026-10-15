@@ -11,6 +11,8 @@ services:
       WAYSTORY_REVISION: ${WAYSTORY_IMAGE:-waystory:local}
       HOST: 0.0.0.0
       PORT: "5173"
+    ports:
+      - "0.0.0.0:5173:5173"
     logging:
       driver: json-file
       options:
