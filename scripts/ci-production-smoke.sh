@@ -20,7 +20,7 @@ cleanup() {
   exit "$result"
 }
 trap cleanup EXIT
-printf "WAYSTORY_CI_SECRET='production-test-only'\nMETRICS_TOKEN='production-metrics-test-only'\nMULTISOURCE_ENABLED=false\n" > "$WAYSTORY_ENV_FILE"
+printf "WAYSTORY_CI_SECRET='production-test-only'\nMETRICS_TOKEN='0123456789abcdef0123456789abcdef'\nMULTISOURCE_ENABLED=false\n" > "$WAYSTORY_ENV_FILE"
 mkdir -p "$fixture/certs/live/ws.nayg.ru"
 openssl req -x509 -nodes -newkey rsa:2048 -days 1 -subj /CN=ws.nayg.ru \
   -keyout "$fixture/certs/live/ws.nayg.ru/privkey.pem" \
@@ -34,7 +34,7 @@ node --input-type=module <<'JS'
 import assert from 'node:assert/strict';
 const base='http://127.0.0.1:5173';
 assert.equal((await fetch(base+'/metrics')).status,401);
-const metrics=await fetch(base+'/metrics',{headers:{Authorization:'Bearer production-metrics-test-only'}});
+const metrics=await fetch(base+'/metrics',{headers:{Authorization:'Bearer 0123456789abcdef0123456789abcdef'}});
 assert.equal(metrics.status,200);
 assert.match(await metrics.text(),/waystory_process_resident_memory_bytes/);
 console.log('Published all-interface metrics endpoint enforces bearer authorization.');
