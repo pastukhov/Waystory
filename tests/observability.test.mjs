@@ -79,3 +79,18 @@ test('generation preserves technical review errors separately from content rejec
   assert.equal(calls,2);assert.match(obs.render(),new RegExp('waystory_stage_operations_total\\{stage="generation",outcome="'+(technical?'error':'rejected')+'"\\} 1'));
  }
 });
+const verifiedWebDomain={host:'museum.example',enabled:true,rightsVerified:true,permissionUrl:'https://museum.example/permission',policyId:'observability-test-web',allowModelInput:true,allowTextCache:true,licenseId:'CC-BY-SA-4.0',licenseUrl:'https://creativecommons.org/licenses/by-sa/4.0/',attribution:'Museum',outputLicense:'CC-BY-SA-4.0',ttlMs:6000};
+async function tavilyConfiguredMetric(env,extra={}){
+ const server=createApp({sourceDbPath:':memory:',env:{MULTISOURCE_ENABLED:'true',METRICS_TOKEN:token,...env},logWriter:()=>{},auth:{enabled:false,session:()=>null},...extra});
+ server.listen(0,'127.0.0.1');await once(server,'listening');
+ try{const response=await fetch(`http://127.0.0.1:${server.address().port}/metrics`,{headers:{Authorization:'Bearer '+token}});assert.equal(response.status,200);return await response.text()}
+ finally{await new Promise(resolve=>{server.close(resolve);server.closeAllConnections()})}
+}
+test('Tavily is configured when legacy web enrichment can make calls',async()=>{
+ const metrics=await tavilyConfiguredMetric({TAVILY_API_KEY:'secret',WEB_SEARCH_MAX_CALLS_PER_DAY:'3',WEB_ENRICHMENT_ENABLED:'true'},{webDomains:[verifiedWebDomain]});
+ assert.match(metrics,/waystory_provider_configured\{provider="tavily"\} 1/);
+});
+test('Tavily is configured when global source discovery can make calls',async()=>{
+ const metrics=await tavilyConfiguredMetric({TAVILY_API_KEY:'secret',WEB_SEARCH_MAX_CALLS_PER_DAY:'3',GLOBAL_SOURCE_DISCOVERY_ENABLED:'true',GLOBAL_WEB_USE_POLICY_JSON:JSON.stringify({reviewed:true,termsUrl:'https://example.com/terms',reviewedAt:'2026-10-15',allowModelInput:true,allowGeneratedAudio:true,allowGeneratedTextCache:true})});
+ assert.match(metrics,/waystory_provider_configured\{provider="tavily"\} 1/);
+});

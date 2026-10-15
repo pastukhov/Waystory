@@ -27,10 +27,11 @@ export function createSpeech({env=process.env,fetchFn=fetch,now=Date.now}={}){
   if(now()-start>=3600000){start=now();calls=0}
   if((env.AUTHENTICATED_REQUESTS_UNLIMITED==='false'&&calls>=limit)||active>=2)throw new GuideError(429,'Озвучка временно занята или достигнут часовой лимит. Попробуйте позже.');
   signal?.throwIfAborted();calls++;active++;
-  const started=Date.now();let providerStatus=null,succeeded=false;
+  const started=Date.now();let providerStatus=null,succeeded=false,deadline=null;
   try{
    observe('tts',{characters:[...text].length});
-   const response=await fetchFn('https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize',{method:'POST',headers:{Authorization:'Api-Key '+key,'Content-Type':'application/x-www-form-urlencoded','x-data-logging-enabled':'false'},body,signal:AbortSignal.any([AbortSignal.timeout(30000),...(signal?[signal]:[])])});
+   deadline=AbortSignal.timeout(30000);const requestSignal=AbortSignal.any([deadline,...(signal?[signal]:[])]);
+   const response=await fetchFn('https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize',{method:'POST',headers:{Authorization:'Api-Key '+key,'Content-Type':'application/x-www-form-urlencoded','x-data-logging-enabled':'false'},body,signal:requestSignal});
    providerStatus=response.status;
    if(response.status===401||response.status===403)throw new GuideError(503,'Нет доступа к SpeechKit. Проверьте роль ai.speechkit-tts.user и разрешение API-ключа на синтез речи.');
    if(response.status===429)throw new GuideError(429,'SpeechKit: достигнут лимит сервиса Yandex. Попробуйте позже.');
@@ -42,7 +43,7 @@ export function createSpeech({env=process.env,fetchFn=fetch,now=Date.now}={}){
    if(audio.length<3||!(audio.subarray(0,3).toString()==='ID3'||(audio[0]===255&&(audio[1]&224)===224)))throw new GuideError(502,'SpeechKit вернул некорректное аудио.');
    while(cache.size&&(bytes+audio.length>32*1024*1024||cache.size>=100)){const oldest=cache.keys().next().value;bytes-=cache.get(oldest).audio.length;cache.delete(oldest)}
    cache.set(id,{audio,time:now()});bytes+=audio.length;succeeded=true;return audio;
-  }catch(e){if(e instanceof GuideError)throw e;throw new GuideError(signal?.aborted?499:502,signal?.aborted?'Озвучка отменена.':'Не удалось получить озвучку. Попробуйте позже.')}finally{active--;observe('stage',{stage:'speech',outcome:succeeded?'success':signal?.aborted?'cancelled':'error',durationMs:Date.now()-started});if(!succeeded&&!signal?.aborted)providerFailure('speech',providerStatus,Date.now()-started)}
+  }catch(e){if(e instanceof GuideError)throw e;throw new GuideError(signal?.aborted?499:502,signal?.aborted?'Озвучка отменена.':'Не удалось получить озвучку. Попробуйте позже.')}finally{active--;observe('stage',{stage:'speech',outcome:succeeded?'success':signal?.aborted?'cancelled':deadline?.aborted?'timeout':'error',durationMs:Date.now()-started});if(!succeeded&&!signal?.aborted)providerFailure('speech',providerStatus,Date.now()-started)}
  }};
 }
 
