@@ -24,7 +24,7 @@ test -r "$env_file" || { echo "Missing readable environment file: $env_file" >&2
 if [ "${WAYSTORY_SYNC_SEARCH_SETTINGS:-false}" = true ]; then
   python3 scripts/sync-deploy-settings.py "$env_file"
 fi
-unset WAYSTORY_TAVILY_SECRET WAYSTORY_METRICS_SECRET WAYSTORY_ROUTERAI_SECRET
+unset WAYSTORY_TAVILY_SECRET WAYSTORY_BRAVE_SECRET WAYSTORY_METRICS_SECRET WAYSTORY_ROUTERAI_SECRET
 
 # Pass interpolation settings explicitly through sudo without exposing secrets.
 # This file contains paths and an image tag only, no credentials.

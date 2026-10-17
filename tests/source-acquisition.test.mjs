@@ -9,3 +9,23 @@ import {registerSourcePolicy} from '../server/sources/policies.mjs';
 test('permitted positive evidence is reused without paying again',async()=>{registerSourcePolicy('test-global-cache',{allowModelInput:true,allowTextCache:true,allowGeneratedAudio:true,ttlMs:60000});let calls=0;const identity={id:'osm:node:1',provider:'osm',title:'Love Alanya',scope:'place',website:'https://example.org/place',text:'',license:{policyId:'osm-odbl'}};const acquire=acquisition.createAcquisition({collect:async()=>({...bundle,documents:[identity]}),search:{enabled:true,searchCandidates:async()=>{calls++;return {candidates:[{url:'https://example.org/place',title:'Love Alanya',snippet:'A documented viewpoint history.',usagePolicyId:'test-global-cache'}],outcomes:[]}}}});assert.equal((await acquire(place)).outcome,'ready');assert.equal((await acquire(place)).outcome,'ready');assert.equal(calls,1)});
 import {createPlaceStore} from '../server/places/store.mjs';
 test('permitted historical evidence survives process restart and upstream outage within policy TTL',async()=>{const store=createPlaceStore({dbPath:':memory:'});let time=0,calls=0;const doc={id:'wikipedia:en:1',provider:'wikipedia',title:'Tower',scope:'place',kind:'history',text:'Built long ago.',license:{policyId:'wikimedia-cc-by-sa'}};try{const first=acquisition.createAcquisition({db:store.db,now:()=>time,collect:async()=>({...bundle,documents:[doc]})});await first(place);const restarted=acquisition.createAcquisition({db:store.db,now:()=>time,collect:async()=>{calls++;throw Error('upstream down')}});assert.equal((await restarted(place)).outcome,'ready');assert.equal(calls,0);time=7*3600000;const stale=await restarted(place);assert.equal(stale.outcome,'limited');assert.equal(stale.bundle.documents[0].stale,true)}finally{store.close()}});
+test('official guides are discovered even when Wikipedia already supplies the story',async()=>{
+ let searches=0,visits=0;const doc={id:'wiki',provider:'wikipedia',title:'Museum',scope:'place',kind:'history',text:'Museum history.',license:{policyId:'wikimedia-cc-by-sa'}};
+ const acquire=acquisition.createAcquisition({collect:async()=>({...bundle,documents:[doc]}),officialDiscovery:async()=>{visits++;return {links:[{url:'https://museum.example/guide',title:'Guide',kind:'guide'}],statuses:[{provider:'official-web',status:'ok'}]}},search:{enabled:true,searchCandidates:async()=>{searches++;throw Error('Should not bill')}}});
+ const value=await acquire(place);assert.equal(value.officialLinks.length,1);assert.equal(value.discoveryStatus.web,'not_needed');assert.equal(value.bundle.documents[0].text,'Museum history.');await acquire(place);assert.equal(visits,1);assert.equal(searches,0);
+});
+test('blocked search keeps available story and exposes incomplete discovery',async()=>{
+ const doc={id:'wiki',provider:'wikipedia',title:'Museum',scope:'place',text:'Museum history.',license:{policyId:'wikimedia-cc-by-sa'}};
+ const acquire=acquisition.createAcquisition({collect:async()=>({...bundle,documents:[doc]}),officialDiscovery:async()=>({links:[],statuses:[]}),search:{enabled:true,searchCandidates:async()=>({candidates:[],outcomes:[{provider:'global-web',status:'unavailable',reason:'access_denied',httpStatus:403}]})}});
+ const value=await acquire(place);assert.equal(value.outcome,'limited');assert.equal(value.discoveryStatus.web,'unavailable');assert.equal(value.bundle.documents[0].text,'Museum history.');
+});
+test('successful fallback clears failure status but incomplete extraction remains visible',async()=>{
+ const doc={id:'wiki',provider:'wikipedia',title:'Museum',scope:'place',text:'Museum history.',license:{policyId:'wikimedia-cc-by-sa'}};
+ for(const [outcomes,expected] of [
+  [[{status:'unavailable'},{status:'ok'}],'ok'],
+  [[{status:'ok'},{status:'partial'}],'unavailable'],
+  [[{status:'ok'},{status:'budget-exhausted',reason:'budget_exhausted'}],'budget_exhausted']]){
+  const acquire=acquisition.createAcquisition({collect:async()=>({...bundle,documents:[doc]}),officialDiscovery:async()=>({links:[],statuses:[]}),search:{enabled:true,searchCandidates:async()=>({candidates:[],outcomes:outcomes.map(s=>({provider:'global-web',...s}))})}});
+  assert.equal((await acquire(place)).discoveryStatus.web,expected);
+ }
+});

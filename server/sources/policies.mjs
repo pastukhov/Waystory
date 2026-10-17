@@ -1,4 +1,4 @@
-export const POLICY_VERSION=1;
+export const POLICY_VERSION=2;
 const cc='https://creativecommons.org/licenses/by-sa/4.0/';
 const policies={
  'wikidata-cc0':{licenseId:'CC0-1.0',licenseUrl:'https://creativecommons.org/publicdomain/zero/1.0/',allowModelInput:true,allowTextCache:true,ttlMs:604800000,attributionRequired:false},

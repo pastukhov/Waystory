@@ -18,9 +18,10 @@ if(mode==='diagnose'){
  const base='http://127.0.0.1:5173';
  const {aiProvider,selectedProvider}=await import(new URL('./server/ai-provider.mjs','file://'+process.cwd()+'/'));
  const ai=aiProvider(env);report({probe:'ai-settings',provider:ai.provider,enabled:ai.enabled,speechProvider:selectedProvider(env,'speech'),routerKeyConfigured:!!env.ROUTERAI_API_KEY});
+ report({probe:'backup-search-settings',braveKeyConfigured:!!env.BRAVE_SEARCH_API_KEY});
  report({probe:'global-source-settings',enabled:env.GLOBAL_SOURCE_DISCOVERY_ENABLED==='true',keyConfigured:!!env.TAVILY_API_KEY,positiveBudget:Number(env.WEB_SEARCH_MAX_CALLS_PER_DAY||0)>0,policyConfigured:!!env.GLOBAL_WEB_USE_POLICY_JSON});
  report({probe:'source-settings',multisource:env.MULTISOURCE_ENABLED!=='false',webRequested:env.WEB_ENRICHMENT_ENABLED==='true',webKeyConfigured:!!env.TAVILY_API_KEY});
- try{const {DatabaseSync}=await import('node:sqlite');const db=new DatabaseSync(env.SOURCE_DB_PATH||'data/sources.sqlite',{readOnly:true});try{const cache=db.prepare('SELECT COUNT(*) AS entries,COALESCE(SUM(doc_count),0) AS documents,COALESCE(SUM(bytes),0) AS bytes FROM source_documents').get();const used=db.prepare('SELECT calls FROM provider_budget WHERE provider=? AND day=?').get('tavily',new Date().toISOString().slice(0,10))?.calls||0;report({probe:'source-catalog',places:db.prepare('SELECT COUNT(*) AS n FROM places').get().n,cache,webBudgetRemaining:Math.max(0,Number(env.WEB_SEARCH_MAX_CALLS_PER_DAY||0)-used)})}finally{db.close()}}catch{report({probe:'source-catalog',status:'not_initialized'})}
+ try{const {DatabaseSync}=await import('node:sqlite');const db=new DatabaseSync(env.SOURCE_DB_PATH||'data/sources.sqlite',{readOnly:true});try{const cache=db.prepare('SELECT COUNT(*) AS entries,COALESCE(SUM(doc_count),0) AS documents,COALESCE(SUM(bytes),0) AS bytes FROM source_documents').get();const used=db.prepare('SELECT COALESCE(SUM(calls),0) AS calls FROM provider_budget WHERE day=?').get(new Date().toISOString().slice(0,10))?.calls||0;report({probe:'source-catalog',places:db.prepare('SELECT COUNT(*) AS n FROM places').get().n,cache,webBudgetRemaining:Math.max(0,Number(env.WEB_SEARCH_MAX_CALLS_PER_DAY||0)-used)})}finally{db.close()}}catch{report({probe:'source-catalog',status:'not_initialized'})}
  try{
   const r=await fetch(base+'/api/session',{signal:AbortSignal.timeout(5000)}),s=await r.json();report({probe:'session',status:r.status,googleConfigured:s.enabled===true,anonymous:s.user===null});if(!r.ok||s.user!==null)process.exitCode=1;
   for(const path of ['/api/guide','/api/speech']){const r=await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(5000)});report({probe:path,status:r.status,anonymousDenied:r.status===(s.enabled?401:503)});if(r.status!==(s.enabled?401:503))process.exitCode=1;await r.body?.cancel()}
@@ -65,6 +66,16 @@ if(mode==='diagnose'){
    if(!result.outcomes.some(o=>o.status==='ok')||result.outcomes.some(o=>o.status==='partial'))process.exitCode=1;
   }
  }finally{store.close()}
+}else if(mode==='official-source-test'){
+ const module=path=>import(new URL(path,'file://'+process.cwd()+'/'));
+ const {createSourceHttp}=await module('./server/sources/http.mjs');
+ const {addOfficialIdentity}=await module('./server/sources/official-identity.mjs');
+ const {createOfficialDiscovery}=await module('./server/sources/official-discovery.mjs');
+ const start=Date.now(),signal=AbortSignal.timeout(15000);
+ const bundle=await addOfficialIdentity({place:{refs:[{provider:'wikipedia',language:'ru',pageId:1236370}]},documents:[{id:'wikipedia:ru:1236370',provider:'wikipedia',title:'Хлебозавод имени Зотова',url:'https://ru.wikipedia.org/?curid=1236370'}]},{request:createSourceHttp(),signal});
+ const result=await createOfficialDiscovery()(bundle,{signal,language:'ru'});
+ report({probe:'official-source-test',officialSiteFound:!!bundle.documents[0].website,links:result.links.map(({url,kind})=>({url,kind})),statuses:result.statuses,durationMs:Date.now()-start});
+ if(!result.links.some(l=>l.kind==='audio'))process.exitCode=1;
 }else if(mode==='web-source-test'){
  const {createPlaceStore}=await import(new URL('./server/places/store.mjs','file://'+process.cwd()+'/'));
  const {createWebEnrichment}=await import(new URL('./server/sources/tavily.mjs','file://'+process.cwd()+'/'));

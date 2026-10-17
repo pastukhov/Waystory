@@ -103,3 +103,7 @@ test('provider failure after a rejected draft is recorded as error, not rejectio
  await assert.rejects(obs.run(()=>guide.run({action:'story',placeId:'wiki:ru:1'})),e=>e.status===429);
  assert.equal(calls,3);assert.match(obs.render(),/waystory_stage_operations_total\{stage="generation",outcome="error"\} 1/);
 });
+test('Brave link search can be configured without granting Tavily content policy',async()=>{
+ const server=createApp({sourceDbPath:':memory:',env:{MULTISOURCE_ENABLED:'true',METRICS_TOKEN:token,BRAVE_SEARCH_API_KEY:'secret',WEB_SEARCH_MAX_CALLS_PER_DAY:'3',GLOBAL_SOURCE_DISCOVERY_ENABLED:'true'},logWriter:()=>{},auth:{enabled:false,session:()=>null},officialDiscovery:async()=>({links:[],statuses:[]})});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));try{const r=await fetch('http://127.0.0.1:'+server.address().port+'/metrics',{headers:{Authorization:'Bearer '+token}});assert.match(await r.text(),/waystory_provider_configured\{provider="brave"\} 1/)}finally{await new Promise(r=>server.close(r))}
+});

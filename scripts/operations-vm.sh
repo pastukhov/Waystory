@@ -3,7 +3,7 @@ set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 operation="${1:-diagnose}"
 request_id="${2:-}"
-case "$operation" in diagnose|sources-test|web-source-test|global-source-test|speech-test|speech-format-test|ai-test|restart|rollback) ;; *) echo 'Unsupported operation' >&2; exit 2;; esac
+case "$operation" in diagnose|sources-test|web-source-test|global-source-test|official-source-test|speech-test|speech-format-test|ai-test|restart|rollback) ;; *) echo 'Unsupported operation' >&2; exit 2;; esac
 if [[ ! "$request_id" =~ ^[a-z0-9][a-z0-9-]{5,79}$ ]]; then echo 'Invalid request identifier' >&2; exit 2; fi
 # No credentials, arbitrary commands, paths or image names are accepted as inputs.
 docker_cmd=(docker)

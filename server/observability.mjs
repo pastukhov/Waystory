@@ -2,7 +2,7 @@ import {randomUUID,timingSafeEqual} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
 import {requestId,withRequestContext} from './request-context.mjs';
 
-const providers=['wikipedia','wikivoyage','wikidata','osm','tavily','yandex_ai','yandex_tts','routerai_ai','routerai_tts'];
+const providers=['wikipedia','wikivoyage','wikidata','osm','tavily','brave','official_web','yandex_ai','yandex_tts','routerai_ai','routerai_tts'];
 const operations=['api','search','extract','story','question','identify','translatePlaces','review','speech','other'];
 const stages=['discovery','acquisition','generation','review','speech'];
 const outcomes=['success','error','timeout','cancelled','rejected','ready','limited','context_only','no_material','temporarily_unavailable','not_configured','budget_exhausted','policy_restricted','empty','partial'];
@@ -33,8 +33,8 @@ export const metricDefinitions={
  ai_tokens_total:['counter','Provider-reported token usage; missing usage is not inferred',['operation','kind']],
  ai_usage_missing_total:['counter','AI responses without complete token usage',['operation']],
  tts_characters_requested_total:['counter','Unicode code points sent for synthesis; not a billing statement',[]],
- tavily_daily_calls_limit:['gauge','Configured UTC daily Tavily call limit, not credits',[]],
- tavily_daily_calls_remaining:['gauge','Remaining persisted UTC daily call reservations, not account balance',[]],
+ tavily_daily_calls_limit:['gauge','Shared UTC daily web search call limit, not credits',[]],
+ tavily_daily_calls_remaining:['gauge','Remaining shared web search UTC daily call reservations, not account balance',[]],
  tavily_budget_available:['gauge','Whether persisted budget could be read at this scrape',[]],
  process_start_time_seconds:['gauge','Process start time',[]],
  process_uptime_seconds:['gauge','Process uptime',[]],
@@ -49,6 +49,7 @@ function providerCall(url,options){
   if(host.endsWith('.wikipedia.org'))return ['wikipedia','api'];
   if(host.endsWith('.wikivoyage.org'))return ['wikivoyage','api'];
   if(host==='www.wikidata.org')return ['wikidata','api'];
+  if(host==='api.search.brave.com')return ['brave','search'];
   if(host==='api.tavily.com')return ['tavily',pick(u.pathname.slice(1),['search','extract'])];
   if(host==='tts.api.cloud.yandex.net')return ['yandex_tts','speech'];
   if(host==='routerai.ru'&&u.pathname==='/api/v1/audio/speech')return ['routerai_tts','speech'];
