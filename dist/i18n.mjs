@@ -2,6 +2,11 @@ import {LANGUAGE} from './language.mjs';
 
 // Explicit UI catalog: Russian source keys, English equivalents.
 export const messages={
+"Рассказ ИИ не прошёл проверку по источникам. Доступен исходный текст.":"The AI story did not pass source verification. The source text is available.",
+"Не удалось получить ответ ИИ. Попробуйте позже.":"Could not get an AI response. Please try again later.",
+"ИИ отвечает слишком долго. Попробуйте ещё раз.":"The AI is taking too long. Please try again.",
+"Гид сейчас занят. Повторите запрос через несколько секунд.":"The guide is busy. Please try again in a few seconds.",
+"Лимит провайдера ИИ временно исчерпан. Попробуйте позже.":"The AI provider limit has been reached temporarily. Please try again later.",
 "Для этого места пока нет подтверждённых материалов. Расширенный поиск ещё не подключён.":"No verified material is available for this place yet. Extended search is not connected yet.",
 "Лимит поиска материалов исчерпан. Сохранённые рассказы доступны.":"The source search budget is exhausted. Saved stories are available.",
 "Материалы найдены, но пока недоступны для создания рассказа.":"Material was found but is not yet available for creating a story.",

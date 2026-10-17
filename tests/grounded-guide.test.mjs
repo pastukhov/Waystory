@@ -16,7 +16,7 @@ test('official CC-BY-SA sources mark narration as a licensed adaptation',async()
 test('conflicting Wikipedia editions are reviewed and rejected before publication or caching',async()=>{
  let reviews=0;const documents=[{...document,text:'The church is currently active.'},{...document,id:'other',text:'The church is currently abandoned.'}];
  const g=createGuide({env,collectSources:async()=>({...bundle,documents}),fetchFn:async(_,o)=>{const b=JSON.parse(o.body);if(b.response_format.json_schema.name==='grounding'){reviews++;return response({supported:false,items:[]})}return response({...output,blocks:[{...output.blocks[0],text:'The church is active. Today it is abandoned.'}]})}});
- await assert.rejects(g.run({action:'story',placeId:'wd:Q1'}),e=>e.status===502);await assert.rejects(g.run({action:'story',placeId:'wd:Q1'}),e=>e.status===502);assert.equal(reviews,2);
+ await assert.rejects(g.run({action:'story',placeId:'wd:Q1'}),e=>e.status===502);await assert.rejects(g.run({action:'story',placeId:'wd:Q1'}),e=>e.status===502);assert.equal(reviews,4);
 });
 test('machine source lists are removed from displayed generated text',async()=>{
  const g=createGuide({env,collectSources:async()=>bundle,fetchFn:async()=>response({...output,blocks:[{...output.blocks[0],text:'Башня построена в 1226 году. Источник: wikipedia:bg:746989, wikipedia:tr:24271.'}]})});
@@ -26,4 +26,26 @@ test('reviewed uncertainty about conflicting sources is allowed and cached',asyn
  let calls=0;const documents=[{...document,text:'The church is currently active.'},{...document,id:'other',text:'The church is currently abandoned.'}];
  const g=createGuide({env,collectSources:async()=>({...bundle,documents}),fetchFn:async(_,o)=>{calls++;const body=JSON.parse(o.body);return response(body.response_format.json_schema.name==='grounding'?{supported:true,items:[{index:0,sourceId:'s',quote:documents[0].text}]}:{...output,blocks:[{...output.blocks[0],text:'Источники расходятся в описании состояния церкви; её нынешний статус не подтверждён.'}]})}});
  const result=await g.run({action:'story',placeId:'wd:Q1'});assert.match(result.blocks[0].text,/расходятся/);await g.run({action:'story',placeId:'wd:Q1'});assert.equal(calls,2);
+});
+
+test('rejected story gets one conservative attempt, reviewed before caching',async()=>{
+ let generations=0,reviews=0;const documents=[document,{...document,id:'other'}];
+ const g=createGuide({env,collectSources:async()=>({...bundle,documents}),fetchFn:async(_,o)=>{
+  const body=JSON.parse(o.body);
+  if(body.response_format.json_schema.name==='grounding'){reviews++;return response(reviews===1?{supported:false,items:[]}:{supported:true,items:[{index:0,sourceId:'s',quote:document.text}]})}
+  generations++;if(generations===2)assert.match(body.messages[0].content,/проверку|verification/);return response(output);
+ }});
+ await g.run({action:'story',placeId:'wd:Q1'});await g.run({action:'story',placeId:'wd:Q1'});assert.equal(generations,2);assert.equal(reviews,2);
+});
+test('repeated grounding rejection exposes a specific safe error',async()=>{
+ const g=createGuide({env,collectSources:async()=>({...bundle,documents:[document,{...document,id:'other'}]}),fetchFn:async(_,o)=>response(JSON.parse(o.body).response_format.json_schema.name==='grounding'?{supported:false,items:[]}:output)});
+ await assert.rejects(g.run({action:'story',placeId:'wd:Q1'}),e=>e.code==='story_unverified'&&/проверку/.test(e.message));
+});
+test('review transport failures do not trigger regeneration',async()=>{
+ let generations=0,reviews=0;const g=createGuide({env,collectSources:async()=>({...bundle,documents:[document,{...document,id:'other'}]}),fetchFn:async(_,o)=>{if(JSON.parse(o.body).response_format.json_schema.name==='grounding'){reviews++;return new Response('',{status:503})}generations++;return response(output)}});
+ await assert.rejects(g.run({action:'story',placeId:'wd:Q1'}),e=>e.status===502);assert.equal(generations,1);assert.equal(reviews,1);
+});
+test('question rejection does not regenerate or report story-specific recovery',async()=>{
+ let calls=0;const g=createGuide({env,collectSources:async()=>({...bundle,documents:[document,{...document,id:'other'}]}),fetchFn:async(_,o)=>{calls++;return response(JSON.parse(o.body).response_format.json_schema.name==='grounding'?{supported:false,items:[]}:{text:'Ответ',sourceIds:['s']})}});
+ await assert.rejects(g.run({action:'question',placeId:'wd:Q1',question:'Когда?'}),e=>e.status===502&&!e.code);assert.equal(calls,2);
 });
