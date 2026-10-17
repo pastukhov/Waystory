@@ -37,3 +37,13 @@ test('fallback waits when paused; stop cancels pending local narration',async()=
 test('auth and quota errors do not activate device fallback',async()=>{for(const status of [401,403,429]){const {n}=setup(async()=>Response.json({error:'denied'},{status}));const d=device(n);n.play([{id:'a',text:'Hello'}]);await tick();assert.equal(d.spoken.length,0)}});
 
 test('cloud requests omit technical citations from saved stories',async()=>{const bodies=[];const {n}=setup(async(url,o)=>{bodies.push(JSON.parse(o.body).text);return new Response('audio')});n.play([{id:'citation',text:'Источник: wikipedia:ru:8922043.'},{id:'story',text:'История башни. Источник: wikipedia:en:47620877.'}]);await tick();assert.deepEqual(bodies,['История башни.']);n.stop()});
+test('prepares only the next fragment during playback and reuses its audio',async()=>{
+ const bodies=[];const {n,audio,heard}=setup(async(url,o)=>{bodies.push(JSON.parse(o.body).text);return new Response('audio')});
+ n.play([{id:'a',text:'First'},{id:'b',text:'Second'},{id:'c',text:'Third'}]);await tick();
+ assert.deepEqual(bodies,['First','Second']);assert.deepEqual(heard,[]);
+ audio.onended();await tick();assert.deepEqual(bodies,['First','Second','Third']);assert.deepEqual(heard,['a']);n.stop();
+});
+test('stopping aborts lookahead and ignores a late prefetched response',async()=>{
+ let finish,signal;let calls=0;const {n,audio,heard}=setup(async(url,o)=>{if(++calls===1)return new Response('audio');signal=o.signal;return new Promise(r=>finish=r)});
+ n.play([{id:'a',text:'First'},{id:'b',text:'Second'}]);await tick();assert.equal(calls,2);const ended=audio.onended;n.stop();assert.equal(signal.aborted,true);finish(new Response('audio'));await tick();ended();assert.equal(n.state,'idle');assert.deepEqual(heard,[]);
+});
