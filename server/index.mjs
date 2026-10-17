@@ -1,5 +1,7 @@
 import {createObservability} from './observability.mjs';
 import {configureSearchPolicy} from './sources/search-policy.mjs';
+import {createOfficialDiscovery} from './sources/official-discovery.mjs';
+import {addOfficialIdentity} from './sources/official-identity.mjs';
 import {createAcquisition} from './sources/acquire.mjs';
 import {createSearchProvider} from './sources/search-provider.mjs';
 import http from 'node:http';
@@ -34,17 +36,17 @@ export function createApp(options={}){
  const settings=sourceSettings(options.env||process.env);
  const store=options.placeStore||((settings.enabled||((options.env||process.env).YANDEX_API_KEY||(options.env||process.env).ROUTERAI_API_KEY))?createPlaceStore({dbPath:options.sourceDbPath||settings.dbPath}):null);
  const env=options.env||process.env;
- const observability=createObservability({env,write:options.logWriter,budgetSnapshot:()=>{if(!store)return null;const limit=Number(env.WEB_SEARCH_MAX_CALLS_PER_DAY||0),used=store.db.prepare('SELECT calls FROM provider_budget WHERE provider=? AND day=?').get('tavily',new Date().toISOString().slice(0,10))?.calls||0;return {limit,remaining:Math.max(0,limit-used)}}});
+ const observability=createObservability({env,write:options.logWriter,budgetSnapshot:()=>{if(!store)return null;const limit=Number(env.WEB_SEARCH_MAX_CALLS_PER_DAY||0),used=store.db.prepare('SELECT COALESCE(SUM(calls),0) AS calls FROM provider_budget WHERE day=?').get(new Date().toISOString().slice(0,10))?.calls||0;return {limit,remaining:Math.max(0,limit-used)}}});
  const sourceRequest=store?createSourceHttp({fetchFn:observability.wrapFetch(options.sourceFetchFn),osmEndpoint:settings.osmEndpoint}):null;
  const wikidata=sourceRequest?createWikidataProvider({request:sourceRequest}):null;
  const enrichment=store?createWebEnrichment({db:store.db,env:options.env,domains:options.webDomains,fetchFn:observability.wrapFetch(options.webFetchFn)}):null;
  const places=options.places||(store?createPlaces({store,enrichment,providers:options.sourceProviders||[createWikipediaProvider({request:sourceRequest}),createOsmProvider({request:sourceRequest,endpoint:settings.osmEndpoint}),wikidata,createWikivoyageProvider({request:sourceRequest,wikidata})]}):null);
  const policyJson=(options.env||process.env).GLOBAL_WEB_USE_POLICY_JSON;
  const globalPolicyReady=policyJson?configureSearchPolicy(JSON.parse(policyJson)):false;
- const globalSearch=store?createSearchProvider({db:store.db,env:options.env,fetchFn:observability.wrapFetch(options.webFetchFn)}):null;
- const acquire=places?createAcquisition({db:store?.db,collect:(p,o)=>places.collect(p,o),search:(options.env||process.env).GLOBAL_SOURCE_DISCOVERY_ENABLED==='true'&&globalPolicyReady?globalSearch:null,report:entry=>console.log(JSON.stringify(entry))}):null;
- const tavilyConfigured=(settings.enabled&&!!enrichment?.enabled)||(!!globalSearch?.enabled&&env.GLOBAL_SOURCE_DISCOVERY_ENABLED==='true'&&globalPolicyReady);
- const guide=createGuide({...options,fetchFn:observability.wrapFetch(options.fetchFn),collectSources:options.collectSources||(places?async(id,o)=>{const p=store.getById(id);if(!p)throw new GuideError(404,'Место не найдено. Повторите поиск.');const result=await acquire(p,o);return {...result.bundle,outcome:result.outcome,diagnosticId:result.diagnosticId}}:undefined),resolveLegacy:options.resolveLegacy||(places?async(ref,o)=>{if(ref.title){const wiki=places.providers.find(p=>p.id==='wikipedia');const r=await wiki.resolveTitle(ref.title,ref.language,o);if(!r.places?.length)throw new GuideError(404,'Место не найдено.');return store.upsert(r.places[0]).id}return (await places.resolve(ref,o)).place.id}:undefined)}),speech=createSpeech({...options,fetchFn:observability.wrapFetch(options.fetchFn)}),auth=options.auth||createAuth({env:options.env,fetchFn:options.authFetchFn,dbPath:options.authDbPath});for(const [provider,enabled] of Object.entries({wikipedia:!!sourceRequest,wikivoyage:!!sourceRequest,wikidata:!!sourceRequest,osm:!!sourceRequest,tavily:tavilyConfigured,yandex_ai:guide.enabled&&guide.provider==='yandex',yandex_tts:speech.enabled&&speech.provider==='yandex',routerai_ai:guide.enabled&&guide.provider==='routerai',routerai_tts:speech.enabled&&speech.provider==='routerai'}))observability.record('configured',{provider,enabled});
+ const globalSearch=store?createSearchProvider({db:store.db,env:globalPolicyReady?env:{...env,TAVILY_API_KEY:''},fetchFn:observability.wrapFetch(options.webFetchFn)}):null;
+ const acquire=places?createAcquisition({db:store?.db,collect:(p,o)=>places.collect(p,o),officialDiscovery:options.officialDiscovery||createOfficialDiscovery(),officialIdentity:(bundle,o)=>addOfficialIdentity(bundle,{...o,request:sourceRequest}),search:env.GLOBAL_SOURCE_DISCOVERY_ENABLED==='true'?globalSearch:null,report:entry=>console.log(JSON.stringify(entry))}):null;
+ const tavilyConfigured=(settings.enabled&&!!enrichment?.enabled)||(!!globalSearch?.enabled&&globalSearch.configuredEngines.includes('tavily')&&env.GLOBAL_SOURCE_DISCOVERY_ENABLED==='true'&&globalPolicyReady);
+ const guide=createGuide({...options,fetchFn:observability.wrapFetch(options.fetchFn),collectSources:options.collectSources||(places?async(id,o)=>{const p=store.getById(id);if(!p)throw new GuideError(404,'Место не найдено. Повторите поиск.');const result=await acquire(p,o);return {...result.bundle,outcome:result.outcome,diagnosticId:result.diagnosticId}}:undefined),resolveLegacy:options.resolveLegacy||(places?async(ref,o)=>{if(ref.title){const wiki=places.providers.find(p=>p.id==='wikipedia');const r=await wiki.resolveTitle(ref.title,ref.language,o);if(!r.places?.length)throw new GuideError(404,'Место не найдено.');return store.upsert(r.places[0]).id}return (await places.resolve(ref,o)).place.id}:undefined)}),speech=createSpeech({...options,fetchFn:observability.wrapFetch(options.fetchFn)}),auth=options.auth||createAuth({env:options.env,fetchFn:options.authFetchFn,dbPath:options.authDbPath});for(const [provider,enabled] of Object.entries({wikipedia:!!sourceRequest,wikivoyage:!!sourceRequest,wikidata:!!sourceRequest,osm:!!sourceRequest,tavily:tavilyConfigured,brave:!!globalSearch?.enabled&&globalSearch.configuredEngines.includes('brave')&&env.GLOBAL_SOURCE_DISCOVERY_ENABLED==='true',official_web:!!acquire,yandex_ai:guide.enabled&&guide.provider==='yandex',yandex_tts:speech.enabled&&speech.provider==='yandex',routerai_ai:guide.enabled&&guide.provider==='routerai',routerai_tts:speech.enabled&&speech.provider==='routerai'}))observability.record('configured',{provider,enabled});
  const server=http.createServer((req,res)=>observability.request(req,res,async()=>{
  const json=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data))};
  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: https://upload.wikimedia.org; media-src 'self' blob:; connect-src 'self' https://*.wikipedia.org; object-src 'none'; base-uri 'self'");
@@ -70,10 +72,8 @@ export function createApp(options={}){
     if(pathname==='/api/places/enrich'){
      if(typeof body.placeId!=='string'||body.placeId.length>300||!['ru','en'].includes(body.language||'ru')||Object.keys(body).some(k=>!['placeId','language'].includes(k)))throw new GuideError(400,'Неверный запрос.');
      const p=store.getById(body.placeId);if(!p)throw new GuideError(404,'Место не найдено. Повторите поиск.');
-     if(!enrichment.enabled)return json(200,{sources:[],statuses:[{provider:'official-web',status:'disabled'}]});
-     const bundle=await places.collect(p,{language:body.language||'ru',signal:controller.signal});
-     const result=await enrichment.run(p,{language:body.language||'ru',signal:controller.signal,identityUrls:bundle.documents.filter(d=>d.provider==='osm'&&d.website).map(d=>d.website)});
-     const {publicSource}=await import('./places/service.mjs');return json(200,{sources:result.documents.map(publicSource),statuses:[{provider:'official-web',status:result.status}]});
+     const result=await acquire(p,{language:body.language||'ru',signal:controller.signal});
+     return json(200,{officialLinks:result.officialLinks,searchLinks:result.searchLinks,discoveryStatus:result.discoveryStatus,statuses:result.bundle.statuses});
     }
     return json(200,await places.resolve(body.ref,{language:body.language||'ru',signal:controller.signal}));
    }
@@ -97,8 +97,8 @@ export function createApp(options={}){
  }
  let user=null;
  try{if(['/api/config','/api/guide','/api/speech'].includes(pathname))user=auth.session(req.headers.cookie)}catch{return json(503,{error:'Вход временно недоступен.'})}
- if(pathname==='/api/config'&&!user)return json(200,{ai:false,mode:'demo',multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!enrichment?.enabled});
- if(pathname==='/api/config')return json(200,guide.enabled?{ai:true,mode:'live',multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!enrichment?.enabled,vision:true,tts:speech.enabled}:{ai:false,mode:'demo',multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!enrichment?.enabled,...(speech.enabled?{tts:true}:{})});
+ if(pathname==='/api/config'&&!user)return json(200,{ai:false,mode:'demo',multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!acquire});
+ if(pathname==='/api/config')return json(200,guide.enabled?{ai:true,mode:'live',multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!acquire,vision:true,tts:speech.enabled}:{ai:false,mode:'demo',multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!acquire,...(speech.enabled?{tts:true}:{})});
  if(pathname==='/api/guide'||pathname==='/api/speech'){
   if(!auth.origin&&req.headers.origin){try{if(new URL(req.headers.origin).host!==req.headers.host)return json(403,{error:'Запрос с другого сайта запрещён.'})}catch{return json(403,{error:'Неверный источник.'})}}
   if(req.method!=='POST')return json(405,{error:'Метод не поддерживается.'});

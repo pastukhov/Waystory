@@ -2,6 +2,17 @@ import {LANGUAGE} from './language.mjs';
 
 // Explicit UI catalog: Russian source keys, English equivalents.
 export const messages={
+"Путеводители и аудиогиды":"Guides and audio guides",
+"Официальный сайт":"Official website",
+"Выставки":"Exhibitions",
+"Путеводитель":"Guide",
+"Аудиогид":"Audio guide",
+"Официальный материал":"Official resource",
+"Ищем путеводители и аудиогиды…":"Looking for guides and audio guides…",
+"Дополнительный веб-поиск недоступен. Рассказ может не учитывать новые материалы.":"Additional web search is unavailable. The story may not include newer materials.",
+"Не удалось проверить официальные материалы. Попробуйте обновить рассказ позже.":"Could not check official resources. Try refreshing the story later.",
+"Официальные путеводители и аудиогиды пока не найдены.":"No official guides or audio guides found yet.",
+"Найдено в интернете":"Found on the web",
 "Определяем, где вы":"Finding your location",
 "Ищем достопримечательности рядом":"Finding nearby landmarks",
 "Ищем достопримечательности":"Finding landmarks",

@@ -11,6 +11,9 @@ def sync(path):
     secret = os.environ.get('WAYSTORY_TAVILY_SECRET', '')
     if secret and not re.fullmatch(r'[A-Za-z0-9_-]{10,512}', secret):
         raise ValueError('Invalid Tavily secret format')
+    brave_secret = os.environ.get('WAYSTORY_BRAVE_SECRET', '')
+    if brave_secret and not re.fullmatch(r'[A-Za-z0-9_.-]{10,512}', brave_secret):
+        raise ValueError('Invalid Brave secret format')
     metrics_secret = os.environ.get('WAYSTORY_METRICS_SECRET', '')
     if metrics_secret and not re.fullmatch(r'[A-Za-z0-9_-]{32,512}', metrics_secret):
         raise ValueError('Invalid metrics secret format')
@@ -33,6 +36,8 @@ def sync(path):
     # Empty Actions secrets must not erase the existing VM credential.
     if secret:
         updates['TAVILY_API_KEY'] = secret
+    if brave_secret:
+        updates['BRAVE_SEARCH_API_KEY'] = brave_secret
     if metrics_secret:
         updates['METRICS_TOKEN'] = metrics_secret
     if router_secret:

@@ -43,3 +43,12 @@ test('RouterAI secret enables both providers without logging or erasing existing
   assert.notEqual(runRouter('bad\nINJECTED=true').status,0);assert.equal(readFileSync(file,'utf8'),preserved);
  }finally{rmSync(dir,{recursive:true,force:true})}
 });
+test('Brave secret is installed privately, preserved when absent and rejected before mutation when malformed',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'waystory-brave-env-')),file=join(dir,'.env'),key='BSA-test_secret-1234567890';
+ try{
+  writeFileSync(file,'BRAVE_SEARCH_API_KEY=old\nexport BRAVE_SEARCH_API_KEY=duplicate\nTAVILY_API_KEY=preserve\n');
+  const runBrave=value=>spawnSync('python3',['scripts/sync-deploy-settings.py',file],{encoding:'utf8',env:{...process.env,WAYSTORY_BRAVE_SECRET:value,WAYSTORY_TAVILY_SECRET:''}});
+  const first=runBrave(key);assert.equal(first.status,0,first.stderr);const output=readFileSync(file,'utf8');assert.equal(output.match(/BRAVE_SEARCH_API_KEY=/g).length,1);assert.ok(output.includes('BRAVE_SEARCH_API_KEY='+key));assert.match(output,/TAVILY_API_KEY=preserve/);assert.ok(!(first.stdout+first.stderr).includes(key));assert.equal(statSync(file).mode&0o777,0o600);
+  assert.equal(runBrave('').status,0);assert.ok(readFileSync(file,'utf8').includes('BRAVE_SEARCH_API_KEY='+key));const before=readFileSync(file,'utf8');const bad=runBrave('bad\nINJECTED=true');assert.notEqual(bad.status,0);assert.equal(readFileSync(file,'utf8'),before);assert.ok(!(bad.stdout+bad.stderr).includes('INJECTED'));
+ }finally{rmSync(dir,{recursive:true,force:true})}
+});
