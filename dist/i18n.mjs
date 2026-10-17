@@ -2,6 +2,11 @@ import {LANGUAGE} from './language.mjs';
 
 // Explicit UI catalog: Russian source keys, English equivalents.
 export const messages={
+"Определяем, где вы":"Finding your location",
+"Ищем достопримечательности рядом":"Finding nearby landmarks",
+"Ищем достопримечательности":"Finding landmarks",
+"Разрешите доступ к геопозиции в окне браузера. Или найдите место по названию.":"Allow location access in your browser, or search for a place by name.",
+"Собираем интересные места поблизости. Это может занять несколько секунд.":"Looking for interesting places nearby. This may take a few seconds.",
 "Рассказ ИИ не прошёл проверку по источникам. Доступен исходный текст.":"The AI story did not pass source verification. The source text is available.",
 "Не удалось получить ответ ИИ. Попробуйте позже.":"Could not get an AI response. Please try again later.",
 "ИИ отвечает слишком долго. Попробуйте ещё раз.":"The AI is taking too long. Please try again.",
