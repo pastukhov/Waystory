@@ -72,9 +72,11 @@ export function createObservability({env=process.env,write=line=>console.log(lin
   else entry.value=mode==='set'?value:entry.value+value;
   map.set(key,entry);
  }
- function log(event,fields){try{write(JSON.stringify({event:'waystory_'+event,requestId:requestId()||randomUUID(),...fields}))}catch{}}
+ function log(event,fields){try{write(JSON.stringify({event:'waystory_'+event,requestId:requestId()||randomUUID(),timestamp:new Date(now()).toISOString(),revision,...fields}))}catch{}}
  function record(event,f={}){
-  if(event==='provider'){
+  if(event==='story_context'||event==='review_detail'){
+   const entry=safeTelemetryEntry({event:'waystory_'+event,requestId:requestId()||randomUUID(),...f});if(entry){const {event:_,requestId:__,...fields}=entry;log(event,fields)}
+  }else if(event==='provider'){
    const provider=pick(f.provider,providers,'osm'),operation=pick(f.operation,operations),code=status(f.status),outcome=pick(f.outcome,['success','error','timeout','cancelled'],'error'),duration=number(f.durationMs)/1000;
    update('provider_requests_total',{provider,operation,status:code,outcome},1);if(code==='401'||code==='403')update('provider_access_denied_total',{provider},1);update('provider_request_duration_seconds',{provider,operation},duration);
    update('provider_last_status_code',{provider},code==='none'?0:Number(code),'set');
@@ -115,7 +117,7 @@ export function createObservability({env=process.env,write=line=>console.log(lin
     if(path==='/metrics')return handler();
     const route=routes.includes(path)?path:path==='/'||/^\/[a-zA-Z0-9_-]+\.(mjs|css|svg|html)$/.test(path)?'static':'unknown',method=pick(req.method,['GET','HEAD','POST','OPTIONS'],'OTHER'),started=performance.now();
     update('http_in_flight',{},1);let finished=false;const id=requestId();
-    const finish=aborted=>{if(finished)return;finished=true;const code=aborted?'499':status(res.statusCode),seconds=(performance.now()-started)/1000;update('http_in_flight',{},-1);update('http_requests_total',{route,method,status:code},1);update('http_request_duration_seconds',{route,method},seconds);try{write(JSON.stringify({event:'waystory_request',requestId:id,route,method,status:Number(code)||500,durationMs:Math.round(seconds*1000)}))}catch{}};
+    const finish=aborted=>{if(finished)return;finished=true;const code=aborted?'499':status(res.statusCode),seconds=(performance.now()-started)/1000;update('http_in_flight',{},-1);update('http_requests_total',{route,method,status:code},1);update('http_request_duration_seconds',{route,method},seconds);try{write(JSON.stringify({event:'waystory_request',requestId:id,timestamp:new Date(now()).toISOString(),revision,route,method,status:Number(code)||500,durationMs:Math.round(seconds*1000)}))}catch{}};
     res.once?.('finish',()=>finish(false));res.once?.('close',()=>finish(!res.writableFinished));
     return handler();
    });
@@ -145,7 +147,12 @@ export function createObservability({env=process.env,write=line=>console.log(lin
 // Also used when Operations filters Docker logs. Reconstruct, never forward input.
 export function safeTelemetryEntry(p){
  if(!/^[a-f0-9-]{36}$/.test(p?.requestId||''))return null;
- const base={event:p.event,requestId:p.requestId};
+ const base={event:p.event,requestId:p.requestId,
+  ...(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(p.timestamp||'')?{timestamp:p.timestamp}:{}),
+  ...(/^[a-zA-Z0-9:._-]{1,100}$/.test(p.revision||'')?{revision:p.revision}:{})};
+ const model=/^[a-zA-Z0-9/._:@-]{1,120}$/.test(p.model||'')?p.model:'unknown';
+ if(p.event==='waystory_story_context'&&/^(osm:(node|way|relation):[1-9]\d*|wd:Q[1-9]\d*|wiki:[a-z-]+:[1-9]\d*)$/.test(p.placeId||''))return {...base,placeId:p.placeId,model};
+ if(p.event==='waystory_review_detail'&&['supported','model_rejected','missing_evidence','provider_error','incomplete_response','invalid_json'].includes(p.reason))return {...base,model,attempt:[1,2].includes(p.attempt)?p.attempt:1,reason:p.reason,blockIndexes:[...new Set((Array.isArray(p.blockIndexes)?p.blockIndexes:[]).filter(x=>Number.isInteger(x)&&x>=0&&x<100))].slice(0,30),modelReasons:[...new Set((Array.isArray(p.modelReasons)?p.modelReasons:[]).filter(x=>['unsupported_claim','contradiction','wrong_object','regional_context'].includes(x)))]};
  if(p.event==='waystory_provider'&&providers.includes(p.provider)&&operations.includes(p.operation)&&['success','error','timeout','cancelled'].includes(p.outcome))return {...base,provider:p.provider,operation:p.operation,status:status(p.status)==='none'?null:p.status,outcome:p.outcome,durationMs:number(p.durationMs)};
  if(p.event==='waystory_stage'&&stages.includes(p.stage)&&outcomes.includes(p.outcome))return {...base,stage:p.stage,outcome:p.outcome,durationMs:number(p.durationMs),...(/^[a-f0-9-]{36}$/.test(p.diagnosticId||'')?{diagnosticId:p.diagnosticId}:{})};
  if(p.event==='waystory_request'&&[...routes,'static','unknown'].includes(p.route)&&['GET','HEAD','POST','OPTIONS','OTHER'].includes(p.method))return {...base,route:p.route,method:p.method,status:status(p.status)==='none'?500:p.status,durationMs:number(p.durationMs)};
