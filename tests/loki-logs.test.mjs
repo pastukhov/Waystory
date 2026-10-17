@@ -52,6 +52,6 @@ test('CLI reads a local Loki-compatible HTTP endpoint and writes only sanitized 
  server.listen(0,'127.0.0.1');await once(server,'listening');
  try{
   const result=await promisify(execFile)(process.execPath,['scripts/loki-logs.mjs'],{env:{...process.env,...env,LOKI_URL:'http://127.0.0.1:'+server.address().port,LOKI_BEARER_TOKEN:'CLI-SECRET',LOKI_USERNAME:'',LOKI_PASSWORD:'',LOKI_TENANT_ID:'',LOG_OUTPUT_DIR:directory,LOG_HOURS:'1',LOG_END:'',LOG_PLACE_ID:'',LOG_REQUEST_ID:''}});
-  assert.equal(requested,true);const summary=JSON.parse(await readFile(directory+'/summary.json','utf8')),events=await readFile(directory+'/events.jsonl','utf8');assert.equal(summary.exported,1);assert.equal(JSON.parse(events).requestId,id);assert.doesNotMatch(result.stdout+result.stderr+events,/CLI-SECRET|PRIVATE|label-secret/);
+  assert.equal(requested,true);const exported=result.stdout.trim().split('\n').map(JSON.parse).filter(x=>x.event==='waystory_log_export');assert.equal(exported.length,1);assert.equal(exported[0].record.requestId,id);const summary=JSON.parse(await readFile(directory+'/summary.json','utf8')),events=await readFile(directory+'/events.jsonl','utf8');assert.equal(summary.exported,1);assert.equal(JSON.parse(events).requestId,id);assert.doesNotMatch(result.stdout+result.stderr+events,/CLI-SECRET|PRIVATE|label-secret/);
  }finally{await new Promise(resolve=>server.close(resolve));await rm(directory,{recursive:true,force:true});}
 });

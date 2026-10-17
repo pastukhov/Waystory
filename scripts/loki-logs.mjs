@@ -79,6 +79,9 @@ export async function main(env=process.env){
  const {summary,entries}=await collectLogs(options);await mkdir(env.LOG_OUTPUT_DIR,{recursive:true,mode:0o700});
  await writeFile(env.LOG_OUTPUT_DIR+'/summary.json',JSON.stringify(summary,null,2)+'\n',{mode:0o600});
  await writeFile(env.LOG_OUTPUT_DIR+'/events.jsonl',entries.map(e=>JSON.stringify(e)).join('\n')+(entries.length?'\n':''),{mode:0o600});
+ // The GitHub run log remains readable when artifact blob downloads are blocked.
+ // Emit only the same reconstructed records already written to the artifact.
+ for(const entry of entries)console.log(JSON.stringify({event:'waystory_log_export',record:entry}));
  console.log(JSON.stringify(summary));
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)main().catch(error=>{console.error(error.message);process.exitCode=1});
