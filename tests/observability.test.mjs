@@ -107,3 +107,10 @@ test('Brave link search can be configured without granting Tavily content policy
  const server=createApp({sourceDbPath:':memory:',env:{MULTISOURCE_ENABLED:'true',METRICS_TOKEN:token,BRAVE_SEARCH_API_KEY:'secret',WEB_SEARCH_MAX_CALLS_PER_DAY:'3',GLOBAL_SOURCE_DISCOVERY_ENABLED:'true'},logWriter:()=>{},auth:{enabled:false,session:()=>null},officialDiscovery:async()=>({links:[],statuses:[]})});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));try{const r=await fetch('http://127.0.0.1:'+server.address().port+'/metrics',{headers:{Authorization:'Bearer '+token}});assert.match(await r.text(),/waystory_provider_configured\{provider="brave"\} 1/)}finally{await new Promise(r=>server.close(r))}
 });
+
+test('review diagnostics carry revision and bounded reasons but exclude raw model text',async()=>{
+ const logs=[],obs=createObservability({env:{WAYSTORY_REVISION:'waystory:abcdef'},write:line=>logs.push(line)});
+ await obs.run(()=>reviewGrounding({blocks:[{text:'PRIVATE',sourceIds:['s']}]},[{id:'s',text:'PRIVATE'}],{headers:{},model:'openai/gpt-4.1-mini',attempt:2,fetchFn:async()=>Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({supported:false,items:[],issues:[{index:0,reason:'contradiction'},{index:900,reason:'SECRET'}]})}}]})}));
+ const detail=logs.map(JSON.parse).find(e=>e.event==='waystory_review_detail');assert.equal(detail.reason,'model_rejected');assert.equal(detail.attempt,2);assert.deepEqual(detail.blockIndexes,[0]);assert.deepEqual(detail.modelReasons,['contradiction']);assert.equal(detail.revision,'waystory:abcdef');assert.ok(detail.timestamp);
+ assert.doesNotMatch(logs.join('\n'),/PRIVATE|SECRET/);assert.deepEqual(safeLogLine(JSON.stringify(detail)),detail);
+});
