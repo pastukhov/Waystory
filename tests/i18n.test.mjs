@@ -68,3 +68,6 @@ test('metadata cache identity survives a translated display overlay but separate
  assert.notEqual(cardMetadataKey(original,'ru'),cardMetadataKey(original,'en'));
  assert.notEqual(cardMetadataKey(original,'ru'),cardMetadataKey({...original,subtitle:'Updated source'},'ru'));
 });
+test('AI failure reasons remain visible instead of the generic unavailable message',()=>{
+ for(const message of ['Рассказ ИИ не прошёл проверку по источникам. Доступен исходный текст.','Не удалось получить ответ ИИ. Попробуйте позже.','ИИ отвечает слишком долго. Попробуйте ещё раз.','Гид сейчас занят. Повторите запрос через несколько секунд.','Лимит провайдера ИИ временно исчерпан. Попробуйте позже.'])assert.equal(safeError(new Error(message),'ИИ-рассказ недоступен.'),t(message));
+});

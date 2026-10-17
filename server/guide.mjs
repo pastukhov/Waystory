@@ -128,10 +128,14 @@ export function createGuide({env=process.env,fetchFn=fetch,now=Date.now,collectS
   const deadline=AbortSignal.timeout(timeout);
   const started=Date.now();let providerStatus=null,succeeded=false,rejected=false;
   try{
+   for(let attempt=0;attempt<2;attempt++){
+   rejected=false;
+   const prompt=messages(input);
+   if(attempt)prompt[0].content+=' Предыдущий вариант не прошёл проверку соответствия источникам. Напиши новый, более краткий рассказ: только один блок depth 0 с однозначно подтверждёнными фактами. Опусти оценки, догадки и спорные детали. Не добавляй утверждений ради объёма.';
    const response=await fetchFn(config.endpoint,{
     method:'POST',redirect:'error',signal:signal?AbortSignal.any([signal,deadline]):deadline,
     headers:config.headers,
-    body:JSON.stringify({model:models[input.action],messages:messages(input),stream:false,temperature:0.3,max_tokens:input.action==='story'?4000:input.action==='translatePlaces'?2500:900,response_format:{type:'json_schema',json_schema:{name:'waystory_'+input.action,schema:schemas[input.action]}}})
+    body:JSON.stringify({model:models[input.action],messages:prompt,stream:false,temperature:0.3,max_tokens:input.action==='story'?4000:input.action==='translatePlaces'?2500:900,response_format:{type:'json_schema',json_schema:{name:'waystory_'+input.action,schema:schemas[input.action]}}})
    });
    providerStatus=response.status;
    if(response.status===402)throw new GuideError(503,'Недостаточно средств у провайдера ИИ.');
@@ -141,12 +145,13 @@ export function createGuide({env=process.env,fetchFn=fetch,now=Date.now,collectS
    if(choice?.finish_reason!=='stop'||typeof choice.message?.content!=='string')throw upstream();
    const data=JSON.parse(choice.message.content);
    if(input.bundle){const ids=input.action==='story'?data.blocks?.map(b=>b.sourceIds):[data.sourceIds];if(!ids?.length||!ids.every(x=>validateCitations(x,input.bundle)))throw upstream()}
-   if(input.bundle&&(modelDocuments(input.bundle).length>1||input.bundle.documents.some(d=>d.provider==='global-web'))){const reviewOutcome=await reviewGroundingOutcome(data,modelDocuments(input.bundle),{fetchFn,endpoint:config.endpoint,model:config.reviewModel||models[input.action],signal:signal?AbortSignal.any([signal,deadline]):deadline,headers:config.headers});if(reviewOutcome!=='success'){rejected=reviewOutcome==='rejected';throw upstream()}}
+   if(input.bundle&&(modelDocuments(input.bundle).length>1||input.bundle.documents.some(d=>d.provider==='global-web'))){const reviewOutcome=await reviewGroundingOutcome(data,modelDocuments(input.bundle),{fetchFn,endpoint:config.endpoint,model:config.reviewModel||models[input.action],signal:signal?AbortSignal.any([signal,deadline]):deadline,headers:config.headers});if(reviewOutcome!=='success'){rejected=reviewOutcome==='rejected';if(rejected&&input.action==='story'&&attempt===0)continue;if(rejected&&input.action==='story')throw Object.assign(new GuideError(502,'Рассказ ИИ не прошёл проверку по источникам. Доступен исходный текст.'),{code:'story_unverified',retryable:true});throw upstream()}}
    if(['story','question'].includes(input.action)){if(typeof data.title==='string')data.title=stripSourceCitations(data.title);for(const block of data.blocks||[]){if(typeof block.text==='string')block.text=stripSourceCitations(block.text);if(typeof block.title==='string')block.title=stripSourceCitations(block.title)}if(typeof data.text==='string')data.text=stripSourceCitations(data.text)}
    const value=result(input,data);
    if(input.bundle){value.evidenceScope=input.bundle.outcome==='context_only'?'area':'place';value.sourceOutcome=input.bundle.outcome||'ready';value.sources=citationMetadata(input.bundle);value.placeId=input.placeId;value.fingerprint=input.bundle.fingerprint;const licenses=modelDocuments(input.bundle).map(d=>sourcePolicy(d.license.policyId).outputLicense);value.outputLicense=licenses.includes('CC-BY-SA-4.0')?'CC-BY-SA-4.0':licenses.find(Boolean)||null;if(value.blocks)value.blocks=value.blocks.map(b=>({...b,id:b.id+'-'+input.bundle.fingerprint.slice(0,12)}))}
    if(key){if(cache.size>=100)cache.delete(cache.keys().next().value);cache.set(key,{value,time:now(),placeId:input.placeId,language:input.language,fingerprint:input.bundle?.fingerprint})}
-   succeeded=true;return value;
+   rejected=false;succeeded=true;return value;
+   }
   }catch(error){
    if(error instanceof GuideError)throw error;
    if(deadline.aborted)throw new GuideError(504,'ИИ отвечает слишком долго. Попробуйте ещё раз.');

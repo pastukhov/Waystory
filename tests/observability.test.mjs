@@ -72,11 +72,11 @@ test('generation preserves technical review errors separately from content rejec
  for(const technical of [true,false]){
   const obs=createObservability({env:{},write:()=>{}});let calls=0;
   const guide=createGuide({env:{YANDEX_API_KEY:'secret',YANDEX_FOLDER_ID:'folder'},collectSources:async()=>{const bundle=await guideFixture.collectSources();bundle.documents.push({...bundle.documents[0],id:'fixture2'});return bundle},fetchFn:obs.wrapFetch(async()=>{
-   if(++calls===2)return technical?new Response('',{status:503}):Response.json({choices:[{finish_reason:'stop',message:{content:'{"supported":false,"items":[]}'}}]});
+   if(++calls%2===0)return technical?new Response('',{status:503}):Response.json({choices:[{finish_reason:'stop',message:{content:'{"supported":false,"items":[]}'}}]});
    return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({title:'Собор',blocks:[{title:'История',depth:0,text:'Казанский собор построен в 1801–1811 годах.',sourceIds:['fixture']}]})}}]});
   })});
   await assert.rejects(obs.run(()=>guide.run({action:'story',placeId:'wiki:ru:1'})));
-  assert.equal(calls,2);assert.match(obs.render(),new RegExp('waystory_stage_operations_total\\{stage="generation",outcome="'+(technical?'error':'rejected')+'"\\} 1'));
+  assert.equal(calls,technical?2:4);assert.match(obs.render(),new RegExp('waystory_stage_operations_total\\{stage="generation",outcome="'+(technical?'error':'rejected')+'"\\} 1'));
  }
 });
 const verifiedWebDomain={host:'museum.example',enabled:true,rightsVerified:true,permissionUrl:'https://museum.example/permission',policyId:'observability-test-web',allowModelInput:true,allowTextCache:true,licenseId:'CC-BY-SA-4.0',licenseUrl:'https://creativecommons.org/licenses/by-sa/4.0/',attribution:'Museum',outputLicense:'CC-BY-SA-4.0',ttlMs:6000};
@@ -93,4 +93,13 @@ test('Tavily is configured when legacy web enrichment can make calls',async()=>{
 test('Tavily is configured when global source discovery can make calls',async()=>{
  const metrics=await tavilyConfiguredMetric({TAVILY_API_KEY:'secret',WEB_SEARCH_MAX_CALLS_PER_DAY:'3',GLOBAL_SOURCE_DISCOVERY_ENABLED:'true',GLOBAL_WEB_USE_POLICY_JSON:JSON.stringify({reviewed:true,termsUrl:'https://example.com/terms',reviewedAt:'2026-10-15',allowModelInput:true,allowGeneratedAudio:true,allowGeneratedTextCache:true})});
  assert.match(metrics,/waystory_provider_configured\{provider="tavily"\} 1/);
+});
+test('provider failure after a rejected draft is recorded as error, not rejection',async()=>{
+ const obs=createObservability({env:{},write:()=>{}});let calls=0;
+ const guide=createGuide({env:{YANDEX_API_KEY:'secret',YANDEX_FOLDER_ID:'folder'},collectSources:async()=>{const bundle=await guideFixture.collectSources();bundle.documents.push({...bundle.documents[0],id:'fixture2'});return bundle},fetchFn:async()=>{
+  calls++;if(calls===3)return new Response('',{status:429});
+  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(calls===2?{supported:false,items:[]}:{title:'Собор',blocks:[{title:'История',depth:0,text:'Казанский собор построен в 1801–1811 годах.',sourceIds:['fixture']}]})}}]});
+ }});
+ await assert.rejects(obs.run(()=>guide.run({action:'story',placeId:'wiki:ru:1'})),e=>e.status===429);
+ assert.equal(calls,3);assert.match(obs.render(),/waystory_stage_operations_total\{stage="generation",outcome="error"\} 1/);
 });
