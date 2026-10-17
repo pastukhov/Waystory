@@ -11,18 +11,17 @@ This is a **pilot with an optional Yandex AI Studio backend**. The interface, ti
 Implemented:
 
 - Search-first home with no preselected city. Open-data POIs from OSM, Wikidata, Wikipedia and Wikivoyage.
-- Yandex SpeechKit MP3 playback with pause/resume and speech-rate control; automatic device voice fallback when cloud narration fails.
+- Cloud MP3 playback with pause/resume and speech-rate control; automatic device voice fallback when cloud narration fails.
 - Cumulative short, standard, and detailed stories. Higher levels append connected new material; thin sources honestly expose fewer levels. Completed sections are not repeated when depth changes; an interrupted section restarts from its beginning.
 - AI follow-up questions with heard context and a return to the main story; prepared answers in demo mode.
 - Server-side open-source search and nearby discovery, native/local names and Google Maps links.
 - Favorites and listening history stored on the current device.
 - Photo selection and recognition through a vision model when AI is configured.
 
-Set `YANDEX_API_KEY` and `YANDEX_FOLDER_ID` on the server to enable AI stories,
-questions, and photo recognition. Without credentials AI is unavailable; open-data search remains available.
+Set `ROUTERAI_API_KEY` through GitHub Actions secrets to enable AI stories,
+questions, photo recognition and cloud narration. See [RouterAI setup](docs/ROUTERAI.md). Without credentials AI is unavailable; open-data search remains available.
 The browser never receives provider credentials. See [Yandex setup](docs/YANDEX-AI.md)
-for model choices, limits, VM migration and live verification. Voice playback uses
-SpeechKit when configured; the key needs separate speech synthesis permissions.
+for model choices, limits, VM migration and live verification. Legacy Yandex settings remain available for an explicit rollback.
 
 Provider coverage, story factual accuracy, actual phone audio and background playback require live testing. Keep the app open during this pilot.
 
@@ -96,7 +95,7 @@ dist/                  Static app source, ready for hosting
   art.mjs, assets/     Original stylized SVG illustrations
 server/index.mjs       Static server and bounded AI API
 server/guide.mjs       Yandex adapter, prompts, validation and story cache
-server/tts.mjs         SpeechKit synthesis and bounded MP3 cache
+server/tts.mjs         Cloud synthesis and bounded MP3 cache
 server/places/        Source-aware place model, SQLite catalog and discovery
 server/sources/       Open providers, policies, collection, optional paid enrichment
 tests/                 Dependency-free Node tests
@@ -119,7 +118,7 @@ budget or per-user billing. There is no account authentication in this pilot.
 
 Sample stories link to their Wikipedia sources; historical claims still need editorial verification before commercial use. Live Wikipedia text links back to its article, where attribution, revision history, and licensing terms can be found. Wikimedia images require a separate attribution/license audit before commercial launch. Sample illustrations are stylized drawings, not photographs.
 
-Location is requested only after pressing the nearby button; there is no continuous tracking. Favorites and history use localStorage. A place enters listening history after a speech section finishes, not merely after opening its card. The user can clear listening history. In cloud mode, spoken text is sent to SpeechKit and audio is cached in server memory. Device voice is used in demo mode. Nearby discovery sends coordinates to Russian, English and Turkish Wikipedia, expanding from 1.5 to 5 and 10 km only when no places are found; the UI reports radius and approximate GPS accuracy. Article coverage is not a complete map of sights. With AI enabled, source text and questions are sent to Yandex; photos are sent only after pressing the recognition button. Photos are not saved by this server. Requests ask Yandex to disable data logging.
+Location is requested only after pressing the nearby button; there is no continuous tracking. Favorites and history use localStorage. A place enters listening history after a speech section finishes, not merely after opening its card. The user can clear listening history. In cloud mode, spoken text is sent to the configured speech provider and audio is cached in server memory. Device voice is used in demo mode. Nearby discovery sends coordinates to Russian, English and Turkish Wikipedia, expanding from 1.5 to 5 and 10 km only when no places are found; the UI reports radius and approximate GPS accuracy. Article coverage is not a complete map of sights. With AI enabled, source text and questions are sent to the configured AI provider; photos are sent only after pressing the recognition button. Photos are not saved by this server. Production uses RouterAI and its upstream providers; Yandex logging controls do not apply.
 
 ## Pull request checks
 
@@ -136,7 +135,7 @@ TLS certificate, separate runner, and deployments after successful main CI.
 ## Browser language and narrative depth
 
 Browser language preferences select Russian or English on page load. Narration
-uses the matching SpeechKit voice (`filipp` / `john`). AI translates the place
+uses the configured cloud voice for the selected language. AI translates the place
 heading and story, answers and photo descriptions into that language. Discovery
 card names/descriptions from other editions are translated in batches using the
 question model; these calls share the AI quota. Source links retain the original

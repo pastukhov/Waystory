@@ -31,6 +31,7 @@ jobs:
         env:
           WAYSTORY_REQUIRE_MAIN: 'true'
           WAYSTORY_METRICS_SECRET: ${{ secrets.METRICS_TOKEN }}
+          WAYSTORY_ROUTERAI_SECRET: ${{ secrets.ROUTERAI_API_KEY }}
           WAYSTORY_TAVILY_SECRET: ${{ secrets.TAVILY_API_KEY }}
           WAYSTORY_SYNC_SEARCH_SETTINGS: 'true'
         run: bash scripts/deploy-vm.sh

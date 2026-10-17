@@ -33,3 +33,13 @@ test('optional Actions metrics token is delivered privately and preserved when a
   const before=readFileSync(file,'utf8');const bad=spawnSync('python3',['scripts/sync-deploy-settings.py',file],{encoding:'utf8',env:{...process.env,WAYSTORY_METRICS_SECRET:'weak'}});assert.notEqual(bad.status,0);assert.equal(readFileSync(file,'utf8'),before);
  }finally{rmSync(dir,{recursive:true,force:true})}
 });
+test('RouterAI secret enables both providers without logging or erasing existing credentials',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'waystory-router-env-')),file=join(dir,'.env'),key='router-test-secret-1234567890';
+ try{
+  writeFileSync(file,'YANDEX_API_KEY=keep\nROUTERAI_API_KEY=old\nAI_PROVIDER=yandex\nTTS_PROVIDER=yandex\n');
+  const runRouter=value=>spawnSync('python3',['scripts/sync-deploy-settings.py',file],{encoding:'utf8',env:{...process.env,WAYSTORY_ROUTERAI_SECRET:value}});
+  const r=runRouter(key);assert.equal(r.status,0,r.stderr);const text=readFileSync(file,'utf8');assert.match(text,/AI_PROVIDER=routerai/);assert.match(text,/TTS_PROVIDER=routerai/);assert.ok(text.includes('ROUTERAI_API_KEY='+key));assert.equal(text.match(/ROUTERAI_API_KEY=/g).length,1);assert.ok(!(r.stdout+r.stderr).includes(key));assert.match(text,/YANDEX_API_KEY=keep/);
+  assert.equal(runRouter('').status,0);assert.deepEqual(readFileSync(file,'utf8').split('\n').sort(),text.split('\n').sort());const preserved=readFileSync(file,'utf8');
+  assert.notEqual(runRouter('bad\nINJECTED=true').status,0);assert.equal(readFileSync(file,'utf8'),preserved);
+ }finally{rmSync(dir,{recursive:true,force:true})}
+});
