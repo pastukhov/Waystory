@@ -27,14 +27,14 @@ export function logOptions(env,now=Date.now()){
  url.pathname=url.pathname.replace(/\/$/,'')+'/loki/api/v1/query_range';
  return {url,selector,headers,start:end-hours*3600000,end,requestId,placeId};
 }
-async function readBounded(response){
+export async function readBounded(response){
  const reader=response.body?.getReader();if(!reader)throw Error('Loki returned an empty response.');let bytes=0;const chunks=[];
  try{while(true){const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>MAX_BYTES)throw Error('Loki response exceeded 16 MiB; use a shorter window.');chunks.push(Buffer.from(value));}}
  catch(error){if(error.message==='Loki response exceeded 16 MiB; use a shorter window.')throw error;throw Error('Could not read Loki response.');}
  finally{await reader.cancel().catch(()=>{});}
  try{return JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{throw Error('Loki returned invalid JSON.');}
 }
-function safeLine(line){
+export function safeLine(line){
  if(typeof line!=='string'||line.length>256*1024)return null;
  const direct=safeLogLine(line);if(direct)return direct;
  // Support Docker json-file shipping without a Promtail docker parsing stage.
@@ -69,8 +69,13 @@ export async function collectLogs(options,{fetchFn=fetch,now=Date.now}={}){
  const summary={generatedAt:new Date(now()).toISOString(),start:new Date(options.start).toISOString(),end:new Date(options.end).toISOString(),requestId:options.requestId||null,placeId:options.placeId||null,queries,rawLines,discarded,exported:entries.length,truncated,note:truncated?'Result capped; narrow the time window or select a request ID.':'Only recognized diagnostic events are exported. Empty results do not prove that no requests occurred.'};
  return {summary,entries};
 }
+export function connectionEnvironment(env){
+ if(env.LOKI_URL||!env.LOKI_DISCOVERY_URL)return env;
+ if(env.LOKI_BEARER_TOKEN||env.LOKI_USERNAME||env.LOKI_PASSWORD||env.LOKI_TENANT_ID)throw Error('Set the trusted LOKI_URL secret before using Loki credentials.');
+ return {...env,LOKI_URL:env.LOKI_DISCOVERY_URL};
+}
 export async function main(env=process.env){
- const options=logOptions(env);if(!env.LOG_OUTPUT_DIR)throw Error('LOG_OUTPUT_DIR is required.');
+ const options=logOptions(connectionEnvironment(env));if(!env.LOG_OUTPUT_DIR)throw Error('LOG_OUTPUT_DIR is required.');
  const {summary,entries}=await collectLogs(options);await mkdir(env.LOG_OUTPUT_DIR,{recursive:true,mode:0o700});
  await writeFile(env.LOG_OUTPUT_DIR+'/summary.json',JSON.stringify(summary,null,2)+'\n',{mode:0o600});
  await writeFile(env.LOG_OUTPUT_DIR+'/events.jsonl',entries.map(e=>JSON.stringify(e)).join('\n')+(entries.length?'\n':''),{mode:0o600});

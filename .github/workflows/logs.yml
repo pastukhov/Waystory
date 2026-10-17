@@ -2,6 +2,17 @@ name: Diagnostic logs
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: 'Export events or discover Waystory stream labels'
+        type: choice
+        options: [logs, discover]
+        default: logs
+      loki_url:
+        description: 'Optional unauthenticated base URL when LOKI_URL secret is unset'
+        type: string
+      selector:
+        description: 'Optional Waystory selector when LOKI_SELECTOR variable is unset'
+        type: string
       hours:
         description: 'Window length ending now or at end_utc'
         type: choice
@@ -42,7 +53,9 @@ jobs:
       - name: Query Loki from the private network
         env:
           LOKI_URL: ${{ secrets.LOKI_URL }}
-          LOKI_SELECTOR: ${{ vars.LOKI_SELECTOR }}
+          LOKI_SELECTOR: ${{ vars.LOKI_SELECTOR || inputs.selector }}
+          LOKI_DISCOVERY_URL: ${{ inputs.loki_url }}
+          LOG_MODE: ${{ inputs.mode }}
           LOKI_BEARER_TOKEN: ${{ secrets.LOKI_BEARER_TOKEN }}
           LOKI_USERNAME: ${{ secrets.LOKI_USERNAME }}
           LOKI_PASSWORD: ${{ secrets.LOKI_PASSWORD }}
@@ -52,7 +65,12 @@ jobs:
           LOG_REQUEST_ID: ${{ inputs.request_id }}
           LOG_PLACE_ID: ${{ inputs.place_id }}
           LOG_OUTPUT_DIR: ${{ steps.output.outputs.directory }}
-        run: node scripts/loki-logs.mjs
+        run: |
+          if [ "$LOG_MODE" = discover ]; then
+            node scripts/loki-discover.mjs
+          else
+            node scripts/loki-logs.mjs
+          fi
       - name: Upload diagnostic report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
