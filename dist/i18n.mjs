@@ -148,6 +148,8 @@ export const messages={
   "В деморежиме доступны готовые вопросы выше.": "Prepared questions above are available in demo mode.",
   "мин": "min",
   "ЗАГРУЖАЕМ ИСТОРИЮ": "LOADING STORY",
+  "Готовим рассказ": "Preparing your story",
+  "Собираем материалы и проверяем текст. Выбор подробности появится, когда рассказ будет готов.": "Gathering material and checking the text. Detail options will appear when the story is ready.",
   "ИИ готовит рассказ…": "AI is preparing your story…",
   "ИИ-рассказ недоступен.": "AI story unavailable.",
   "Можно слушать подготовленный текст.": "You can listen to the prepared text.",
