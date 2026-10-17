@@ -23,7 +23,7 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
     if(body.action==='translatePlaces')return r.fulfill({json:{language,places:body.places.map(p=>({...p,title,subtitle:language==='ru'?'История города':'City history'}))}});
     if(body.action==='story'){
      if(storyGate)await storyGate;
-     if(failStory)return r.fulfill({status:502,json:{error:'Translation temporarily unavailable'}});
+     if(failStory)return r.fulfill({status:502,json:{error:'Не удалось проверить факты в ИИ-рассказе. Попробуйте ещё раз.',code:'story_unverified'}});
      return r.fulfill({json:{title,language,storyVersion:5,detailLimited:false,blocks:[{id:'s0',depth:0,title,text:(language==='ru'?'Главное. ':'Essentials. ').repeat(40)},{id:'s1',depth:1,title,text:(language==='ru'?'История. ':'History. ').repeat(80)},{id:'s2',depth:2,title,text:(language==='ru'?'Подробности. ':'Details. ').repeat(150)}]}});
     }
     return r.fulfill({json:{text:language==='ru'?'Ответ по источнику.':'An answer based on the source.'}});
@@ -78,6 +78,7 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
    const durations=[];
    for(const depth of [0,1,2]){await page.locator('.depth-switch [data-depth="'+depth+'"]').click();assert.equal(await page.locator('.story-block').count(),depth+1);durations.push(await page.locator('#duration-label').innerText())}
    assert.equal(new Set(durations).size,3);
+   failStory=true;await page.locator('#story-refresh').click();await page.waitForFunction(()=>/текст Википедии|Wikipedia text/.test(document.querySelector('#story-message').textContent));assert.equal(await page.locator('#story-play').isEnabled(),true);assert.match(await page.locator('#story-refresh').textContent(),language==='ru'?/Попробовать создать/:/Try creating/);failStory=false;
    const speech=page.waitForRequest(r=>r.url().endsWith('/api/speech'));
    await page.locator('#story-play').click();await speech;
    assert.equal((await page.locator('#story-message').textContent()).includes('Illegal invocation'),false);

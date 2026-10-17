@@ -19,6 +19,15 @@ export const messages={
 "Разрешите доступ к геопозиции в окне браузера. Или найдите место по названию.":"Allow location access in your browser, or search for a place by name.",
 "Собираем интересные места поблизости. Это может занять несколько секунд.":"Looking for interesting places nearby. This may take a few seconds.",
 "Рассказ ИИ не прошёл проверку по источникам. Доступен исходный текст.":"The AI story did not pass source verification. The source text is available.",
+"Не удалось проверить факты в ИИ-рассказе. Попробуйте ещё раз.":"We could not verify the facts in the AI story. Please try again.",
+"Не удалось проверить факты в новом ИИ-рассказе.":"We could not verify the facts in the new AI story.",
+"Пока показываем текст Википедии — его можно читать и слушать.":"For now, you can read or listen to the Wikipedia text shown here.",
+"Ваш сохранённый рассказ доступен для чтения и прослушивания.":"Your saved story is available to read or listen to.",
+"Пока показываем текст источника — его можно читать и слушать.":"For now, you can read or listen to the source text shown here.",
+"Ниже доступен текст на языке оригинала. Озвучка для выбранного языка недоступна.":"The original-language text is available below. Narration is unavailable in your selected language.",
+"Текст для чтения и озвучки тоже загрузить не удалось.":"We could not load any text to read or listen to either.",
+"Попробовать создать ИИ-рассказ ещё раз":"Try creating the AI story again",
+
 "Не удалось получить ответ ИИ. Попробуйте позже.":"Could not get an AI response. Please try again later.",
 "ИИ отвечает слишком долго. Попробуйте ещё раз.":"The AI is taking too long. Please try again.",
 "Гид сейчас занят. Повторите запрос через несколько секунд.":"The guide is busy. Please try again in a few seconds.",
@@ -345,3 +354,12 @@ export function speechError(message,language=LANGUAGE){
 
 export function cardMetadataKey(place,language=LANGUAGE){return JSON.stringify([language,place.id,place.originalTitle||place.title,place.originalSubtitle??place.subtitle??''])}
 
+
+// Describe only the fallback that actually survived source loading in the browser.
+export function storyVerificationMessage(place,language=LANGUAGE){
+ const reason=t('Не удалось проверить факты в новом ИИ-рассказе.',language);
+ if(!place.blocks?.some(b=>b.text?.trim()))return reason+' '+t('Текст для чтения и озвучки тоже загрузить не удалось.',language);
+ if(!canListen(place,language))return reason+' '+t('Ниже доступен текст на языке оригинала. Озвучка для выбранного языка недоступна.',language);
+ const fallback=place.aiGenerated?'Ваш сохранённый рассказ доступен для чтения и прослушивания.':/^https:\/\/[a-z-]+\.wikipedia\.org\//i.test(place.source||'')?'Пока показываем текст Википедии — его можно читать и слушать.':'Пока показываем текст источника — его можно читать и слушать.';
+ return reason+' '+t(fallback,language);
+}

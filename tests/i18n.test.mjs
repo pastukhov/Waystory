@@ -71,3 +71,14 @@ test('metadata cache identity survives a translated display overlay but separate
 test('AI failure reasons remain visible instead of the generic unavailable message',()=>{
  for(const message of ['Рассказ ИИ не прошёл проверку по источникам. Доступен исходный текст.','Не удалось получить ответ ИИ. Попробуйте позже.','ИИ отвечает слишком долго. Попробуйте ещё раз.','Гид сейчас занят. Повторите запрос через несколько секунд.','Лимит провайдера ИИ временно исчерпан. Попробуйте позже.'])assert.equal(safeError(new Error(message),'ИИ-рассказ недоступен.'),t(message));
 });
+
+test('verification fallback copy matches text availability and listening language',async()=>{
+ const {storyVerificationMessage}=await import('../dist/i18n.mjs');
+ const wiki={lang:'ru',source:'https://ru.wikipedia.org/wiki/Test',blocks:[{text:'Real text'}]};
+ assert.match(storyVerificationMessage(wiki,'ru'),/текст Википедии.*читать и слушать/);
+ assert.match(storyVerificationMessage({...wiki,aiGenerated:true,storyLanguage:'ru'},'ru'),/сохранённый рассказ/);
+ assert.match(storyVerificationMessage({...wiki,blocks:[]},'ru'),/загрузить не удалось/);
+ assert.match(storyVerificationMessage(wiki,'en'),/original-language text.*Narration is unavailable/);
+ assert.match(storyVerificationMessage({...wiki,lang:'en'},'en'),/Wikipedia text/);
+ assert.match(storyVerificationMessage({...wiki,source:'https://museum.example'},'ru'),/текст источника/);
+});
