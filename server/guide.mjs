@@ -1,3 +1,4 @@
+import {aiProvider} from './ai-provider.mjs';
 import {observe} from './request-context.mjs';
 import {stripSourceCitations} from '../dist/speech-text.mjs';
 import {reviewGroundingOutcome} from './sources/facts.mjs';
@@ -25,11 +26,6 @@ function number(env,name,fallback,max){
  const value=env[name]??String(fallback);
  if(!/^\d+$/.test(value)||Number(value)<1||Number(value)>max)throw new Error(`Invalid ${name}`);
  return Number(value);
-}
-function model(env,name,fallback){
- const value=env[name]||fallback;
- if(!/^[a-zA-Z0-9._/-]+$/.test(value)||value.length>150)throw new Error(`Invalid ${name}`);
- return `gpt://${env.YANDEX_FOLDER_ID}/${value}`;
 }
 function validate(payload){
  if(!payload||!['story','question','identify','translatePlaces'].includes(payload.action))throw bad();
@@ -105,13 +101,11 @@ function result(input,data){
 }
 
 export function createGuide({env=process.env,fetchFn=fetch,now=Date.now,collectSources,resolveLegacy}={}){
- const enabled=!!(env.YANDEX_API_KEY?.trim()&&env.YANDEX_FOLDER_ID?.trim());
- if(!enabled)return {enabled:false,run:async()=>{throw new GuideError(503,'ИИ пока не подключён. Попробуйте готовые истории и вопросы.')}};
- if(!/^[a-zA-Z0-9_-]+$/.test(env.YANDEX_FOLDER_ID))throw new Error('Invalid YANDEX_FOLDER_ID');
- const models={story:model(env,'YANDEX_STORY_MODEL','aliceai-llm'),question:model(env,'YANDEX_QUESTION_MODEL','aliceai-llm-flash'),identify:model(env,'YANDEX_VISION_MODEL','qwen3.6-35b-a3b'),translatePlaces:model(env,'YANDEX_QUESTION_MODEL','aliceai-llm-flash')};
+ const config=aiProvider(env),{enabled,models,provider}=config;
+ if(!enabled)return {enabled:false,provider,run:async()=>{throw new GuideError(503,'ИИ пока не подключён. Попробуйте готовые истории и вопросы.')}};
  const hourLimit=number(env,'AI_REQUESTS_PER_HOUR',120,10000),timeout=number(env,'AI_TIMEOUT_MS',60000,90000);
  const cache=new Map();let windowStart=now(),calls=0,active=0;
- return {enabled:true,async run(payload,signal){
+ return {enabled:true,provider,async run(payload,signal){
   const input=validate(payload);
   if(['story','question'].includes(input.action)){
    if(!collectSources)throw new GuideError(503,'Источники рассказа временно недоступны.');
@@ -134,19 +128,20 @@ export function createGuide({env=process.env,fetchFn=fetch,now=Date.now,collectS
   const deadline=AbortSignal.timeout(timeout);
   const started=Date.now();let providerStatus=null,succeeded=false,rejected=false;
   try{
-   const response=await fetchFn('https://ai.api.cloud.yandex.net/v1/chat/completions',{
+   const response=await fetchFn(config.endpoint,{
     method:'POST',redirect:'error',signal:signal?AbortSignal.any([signal,deadline]):deadline,
-    headers:{Authorization:'Api-Key '+env.YANDEX_API_KEY,'OpenAI-Project':env.YANDEX_FOLDER_ID,'Content-Type':'application/json','x-data-logging-enabled':'false'},
+    headers:config.headers,
     body:JSON.stringify({model:models[input.action],messages:messages(input),stream:false,temperature:0.3,max_tokens:input.action==='story'?4000:input.action==='translatePlaces'?2500:900,response_format:{type:'json_schema',json_schema:{name:'waystory_'+input.action,schema:schemas[input.action]}}})
    });
    providerStatus=response.status;
+   if(response.status===402)throw new GuideError(503,'Недостаточно средств у провайдера ИИ.');
    if(response.status===429)throw new GuideError(429,'Лимит провайдера ИИ временно исчерпан. Попробуйте позже.');
    if(!response.ok)throw upstream();
    const output=await response.json(),choice=output.choices?.[0];observe('usage',{operation:input.action,usage:output.usage});
    if(choice?.finish_reason!=='stop'||typeof choice.message?.content!=='string')throw upstream();
    const data=JSON.parse(choice.message.content);
    if(input.bundle){const ids=input.action==='story'?data.blocks?.map(b=>b.sourceIds):[data.sourceIds];if(!ids?.length||!ids.every(x=>validateCitations(x,input.bundle)))throw upstream()}
-   if(input.bundle&&(modelDocuments(input.bundle).length>1||input.bundle.documents.some(d=>d.provider==='global-web'))){const reviewOutcome=await reviewGroundingOutcome(data,modelDocuments(input.bundle),{fetchFn,model:models[input.action],signal:signal?AbortSignal.any([signal,deadline]):deadline,headers:{Authorization:'Api-Key '+env.YANDEX_API_KEY,'OpenAI-Project':env.YANDEX_FOLDER_ID,'Content-Type':'application/json','x-data-logging-enabled':'false'}});if(reviewOutcome!=='success'){rejected=reviewOutcome==='rejected';throw upstream()}}
+   if(input.bundle&&(modelDocuments(input.bundle).length>1||input.bundle.documents.some(d=>d.provider==='global-web'))){const reviewOutcome=await reviewGroundingOutcome(data,modelDocuments(input.bundle),{fetchFn,endpoint:config.endpoint,model:config.reviewModel||models[input.action],signal:signal?AbortSignal.any([signal,deadline]):deadline,headers:config.headers});if(reviewOutcome!=='success'){rejected=reviewOutcome==='rejected';throw upstream()}}
    if(['story','question'].includes(input.action)){if(typeof data.title==='string')data.title=stripSourceCitations(data.title);for(const block of data.blocks||[]){if(typeof block.text==='string')block.text=stripSourceCitations(block.text);if(typeof block.title==='string')block.title=stripSourceCitations(block.title)}if(typeof data.text==='string')data.text=stripSourceCitations(data.text)}
    const value=result(input,data);
    if(input.bundle){value.evidenceScope=input.bundle.outcome==='context_only'?'area':'place';value.sourceOutcome=input.bundle.outcome||'ready';value.sources=citationMetadata(input.bundle);value.placeId=input.placeId;value.fingerprint=input.bundle.fingerprint;const licenses=modelDocuments(input.bundle).map(d=>sourcePolicy(d.license.policyId).outputLicense);value.outputLicense=licenses.includes('CC-BY-SA-4.0')?'CC-BY-SA-4.0':licenses.find(Boolean)||null;if(value.blocks)value.blocks=value.blocks.map(b=>({...b,id:b.id+'-'+input.bundle.fingerprint.slice(0,12)}))}

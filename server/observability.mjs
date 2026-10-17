@@ -2,7 +2,7 @@ import {randomUUID,timingSafeEqual} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
 import {requestId,withRequestContext} from './request-context.mjs';
 
-const providers=['wikipedia','wikivoyage','wikidata','osm','tavily','yandex_ai','yandex_tts'];
+const providers=['wikipedia','wikivoyage','wikidata','osm','tavily','yandex_ai','yandex_tts','routerai_ai','routerai_tts'];
 const operations=['api','search','extract','story','question','identify','translatePlaces','review','speech','other'];
 const stages=['discovery','acquisition','generation','review','speech'];
 const outcomes=['success','error','timeout','cancelled','rejected','ready','limited','context_only','no_material','temporarily_unavailable','not_configured','budget_exhausted','policy_restricted','empty','partial'];
@@ -51,9 +51,10 @@ function providerCall(url,options){
   if(host==='www.wikidata.org')return ['wikidata','api'];
   if(host==='api.tavily.com')return ['tavily',pick(u.pathname.slice(1),['search','extract'])];
   if(host==='tts.api.cloud.yandex.net')return ['yandex_tts','speech'];
-  if(host==='ai.api.cloud.yandex.net'){
+  if(host==='routerai.ru'&&u.pathname==='/api/v1/audio/speech')return ['routerai_tts','speech'];
+  if(host==='ai.api.cloud.yandex.net'||host==='routerai.ru'){
    let schema;try{schema=JSON.parse(options?.body||'{}').response_format?.json_schema?.name}catch{}
-   return ['yandex_ai',schema==='grounding'?'review':pick(schema?.replace(/^waystory_/,''),operations)];
+   return [host==='routerai.ru'?'routerai_ai':'yandex_ai',schema==='grounding'?'review':pick(schema?.replace(/^waystory_/,''),operations)];
   }
   return ['osm','api']; // This wrapper is supplied only to the allowlisted source transport.
  }catch{return ['osm','api']}
