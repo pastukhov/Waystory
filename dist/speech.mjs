@@ -50,14 +50,23 @@ export class CloudNarrator extends Narrator {
   const parts=[];
   for(const block of blocks){let text=normalizeSpeechText(block.text);while(text.length>1000){let end=text.lastIndexOf(' ',1000);if(end<500)end=1000;parts.push({block,text:text.slice(0,end),last:false});text=text.slice(end).trimStart()}if(text)parts.push({block,text,last:true})}
   if(this.deviceFallback){this.startLocal(parts);return}
+  const language=this.language;
+  // Keep one future blob, never an unhandled rejected promise or an object URL.
+  const prepare=async part=>{try{const r=await this.fetchFn('/api/speech',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:part.text,language}),signal});
+   if(!r.ok){const data=await r.json().catch(()=>({}));throw Object.assign(new Error(data.error||'Не удалось получить озвучку.'),{status:r.status})}
+   return {blob:await r.blob()};
+  }catch(error){return {error}}};
+  let pending=null;
   const next=async()=>{
    if(token!==this.epoch)return;
    const part=parts.shift();if(!part){this.ready=false;this.release();this.setState('finished');return}
    this.ready=false;this.current=part.block;this.onBlock(part.block);this.setState('loading');
    try{
-    const r=await this.fetchFn('/api/speech',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:part.text,language:this.language}),signal});
-    if(!r.ok){const data=await r.json().catch(()=>({}));throw Object.assign(new Error(data.error||'Не удалось получить озвучку.'),{status:r.status})}
-    const blob=await r.blob();if(token!==this.epoch)return;
+    const prepared=await (pending||prepare(part));pending=null;
+    if(token!==this.epoch)return;
+    if(prepared.error)throw prepared.error;
+    const blob=prepared.blob;
+    if(parts.length)pending=prepare(parts[0]);
     this.release();this.objectUrl=URL.createObjectURL(blob);this.audio.src=this.objectUrl;this.audio.playbackRate=this.rate;this.ready=true;
     let ended=false;
     this.audio.onended=()=>{if(token!==this.epoch||ended)return;ended=true;if(part.last)this.onComplete(part.block);next()};
