@@ -98,6 +98,20 @@ if(mode==='diagnose'){
  if(!key){report({probe:'speech',error:'not_configured'});process.exitCode=1}else{
   for(const [format,voice] of [['oggopus','filipp'],['mp3','marina']])await probe('speech-ru-'+format+'-'+voice,'https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize',{method:'POST',headers:{Authorization:'Api-Key '+key,'Content-Type':'application/x-www-form-urlencoded','x-data-logging-enabled':'false'},body:new URLSearchParams({text:'Проверка голоса.',voice,lang:'ru-RU',format,speed:'1.0'}).toString()});
  }
+}else if(mode==='story-depth-test'){
+ const module=path=>import(new URL(path,'file://'+process.cwd()+'/'));
+ const {createPlaceStore}=await module('./server/places/store.mjs');const {createPlaces}=await module('./server/places/service.mjs');
+ const {createSourceHttp}=await module('./server/sources/http.mjs');const {createWikipediaProvider}=await module('./server/sources/wikipedia.mjs');const {createWikidataProvider}=await module('./server/sources/wikidata.mjs');const {createWikivoyageProvider}=await module('./server/sources/wikivoyage.mjs');const {createGuide}=await module('./server/guide.mjs');
+ const store=createPlaceStore({dbPath:env.SOURCE_DB_PATH||'data/sources.sqlite'}),request=createSourceHttp(),wiki=createWikipediaProvider({request}),wikidata=createWikidataProvider({request});
+ try{
+  const places=createPlaces({store,providers:[wiki,wikidata,createWikivoyageProvider({request,wikidata})]});
+  const resolved=await places.resolve({provider:'wikipedia',language:'ru',pageId:3682050},{language:'ru'});const place=store.getById(resolved.place.id);
+  const bundle=await places.collect(place,{language:'ru'});const start=Date.now();
+  const guide=createGuide({env,collectSources:async()=>bundle});const story=await guide.run({action:'story',language:'ru',placeId:place.id});
+  const words=story.blocks.map(b=>b.text.trim().split(/\s+/u).length),depths=story.blocks.map(b=>b.depth);
+  report({probe:'story-depth-test',placeId:place.id,blocks:story.blocks.length,depths,words:words.reduce((a,b)=>a+b,0),detailLimited:story.detailLimited,durationMs:Date.now()-start});
+  if(!depths.includes(1))process.exitCode=1;
+ }catch(error){report({probe:'story-depth-test',status:error.status||null,error:clean(error.message)});process.exitCode=1}finally{store.close()}
 }else if(mode==='ai-test'){
  const {aiProvider}=await import(new URL('./server/ai-provider.mjs','file://'+process.cwd()+'/'));
  const config=aiProvider(env);
