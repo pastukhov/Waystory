@@ -72,6 +72,7 @@ export const messages={
 "Определяем местоположение. Можно также найти место или город по названию.":"Finding your location. You can also search for a place or city.",
 "Введите город или название места либо повторите поиск рядом.":"Enter a city or place name, or retry nearby search.",
 "Повторить поиск рядом":"Retry nearby search",
+"Не удалось найти места рядом. Повторите поиск или введите город.":"Could not find nearby places. Retry or enter a city.",
 "Нажмите «Что рядом со мной» или введите город или название места.":"Tap “What's near me” or search for a city or place.",
 "← Очистить поиск":"← Clear search",
 "или по фотографии.":"or from a photo.",

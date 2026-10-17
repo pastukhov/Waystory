@@ -171,7 +171,7 @@ function loadNearby(){
    const results=await (state.multisource?discoverNearby:nearbyPlaces)(pos.coords.latitude,pos.coords.longitude,signal,LANGUAGE);
    if(!current())return;
    state.places=results.places;translateDiscovery(token,signal);state.emptyNearby=true;$('section-title').textContent=t('Рядом с вами');$('location-label').textContent=t('В РАДИУСЕ ')+(results.radius/1000).toLocaleString(LANGUAGE_TAG)+t(' КМ');$('reset-places').hidden=false;setStatus(t('Найдено: ')+results.places.length+t('. Радиус — ')+(results.radius/1000).toLocaleString(LANGUAGE_TAG)+t(' км. Точность геопозиции — около ')+Math.round(pos.coords.accuracy)+t(' м. Координаты: ')+pos.coords.latitude.toFixed(4)+', '+pos.coords.longitude.toFixed(4)+'.'+(results.partial?t(' Часть источников недоступна — попробуйте повторить поиск.'):''));renderPlaces()
-  }catch(error){if(error.name!=='AbortError')fail(safeError(error,'Не удалось загрузить рассказ. Попробуйте другое место.'))}
+  }catch(error){fail(safeError(error,'Не удалось найти места рядом. Повторите поиск или введите город.'))}
  },error=>fail(error.code===1?t('Доступ к местоположению запрещён. Разрешите его в настройках сайта или воспользуйтесь поиском.'):t('Не удалось определить местоположение. Попробуйте на открытом месте или введите название.')),{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
  }catch{fail(t('Геолокация недоступна. Найдите место по названию.'))}
 }
