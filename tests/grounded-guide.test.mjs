@@ -39,7 +39,7 @@ test('rejected story gets one conservative attempt, reviewed before caching',asy
 });
 test('repeated grounding rejection exposes a specific safe error',async()=>{
  const g=createGuide({env,collectSources:async()=>({...bundle,documents:[document,{...document,id:'other'}]}),fetchFn:async(_,o)=>response(JSON.parse(o.body).response_format.json_schema.name==='grounding'?{supported:false,items:[]}:output)});
- await assert.rejects(g.run({action:'story',placeId:'wd:Q1'}),e=>e.code==='story_unverified'&&/проверку/.test(e.message));
+ await assert.rejects(g.run({action:'story',placeId:'wd:Q1'}),e=>e.code==='story_unverified'&&/проверить факты/.test(e.message)&&!e.message.includes('исходный текст'));
 });
 test('review transport failures do not trigger regeneration',async()=>{
  let generations=0,reviews=0;const g=createGuide({env,collectSources:async()=>({...bundle,documents:[document,{...document,id:'other'}]}),fetchFn:async(_,o)=>{if(JSON.parse(o.body).response_format.json_schema.name==='grounding'){reviews++;return new Response('',{status:503})}generations++;return response(output)}});
