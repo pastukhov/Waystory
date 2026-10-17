@@ -40,6 +40,20 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
     assert.ok(layout.scroll<=layout.viewport+1,JSON.stringify(layout));assert.ok(layout.labels.every(x=>x.size<=12&&x.right<=width),JSON.stringify(layout));assert.ok(layout.eyebrows.every(x=>x.width>50&&x.height>5),JSON.stringify(layout));
    }
    await page.setViewportSize({width:390,height:844});
+   await page.waitForFunction(()=>/ИИ-гид подключён:|AI guide connected:/.test(document.querySelector('#mode-note p')?.textContent||''));
+   await page.locator('#photo-open').click();
+   const cameraPicker=page.waitForEvent('filechooser');await page.locator('#photo-camera-open').click();const camera=await cameraPicker;
+   assert.equal(await camera.element().getAttribute('capture'),'environment');assert.equal(await camera.element().getAttribute('accept'),'image/*');
+   const image=await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=32;canvas.height=32;return canvas.toDataURL('image/png').split(',')[1]});
+   const photo={name:'camera.png',mimeType:'image/png',buffer:Buffer.from(image,'base64')};
+   await camera.setFiles(photo);assert.equal(await page.locator('#photo-preview').isVisible(),true);assert.equal(await page.locator('#identify-photo').isEnabled(),true);
+   assert.equal(calls.filter(x=>x.action==='identify').length,0);
+   const galleryPicker=page.waitForEvent('filechooser');await page.locator('.photo-drop').click();const gallery=await galleryPicker;
+   assert.equal(await gallery.element().getAttribute('capture'),null);await gallery.setFiles(photo);
+   assert.equal(await page.locator('#photo-input').inputValue(),'');
+   await page.locator('#identify-photo').click();await page.waitForFunction(()=>!document.querySelector('#photo-result').hidden);
+   assert.equal(calls.filter(x=>x.action==='identify').length,1);
+   await page.locator('[data-close="photo-dialog"]').click();
    await search();
    await page.waitForFunction(()=>/ИИ-гид подключён:|AI guide connected:/.test(document.querySelector('#mode-note p')?.textContent||''));await page.waitForFunction(expected=>document.querySelector('.card-title')?.textContent===expected,title);
    assert.equal(await page.locator('html').getAttribute('lang'),language);

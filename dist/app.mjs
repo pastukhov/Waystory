@@ -164,8 +164,9 @@ $('locate').onclick=()=>{
 };
 $('photo-open').onclick=()=>openDialog('photo-dialog');
 function cancelPhoto(){photoEpoch.next();photoController?.abort();$('identify-photo').disabled=!state.vision||!state.photo}
-$('photo-input').onchange=e=>{
- const file=e.target.files[0];if(!file)return;cancelPhoto();
+$('photo-camera-open').onclick=()=>$('photo-camera-input').click();
+function selectPhoto(e){
+ const file=e.target.files[0];e.target.value='';if(!file)return;cancelPhoto();
  if(state.photoUrl)URL.revokeObjectURL(state.photoUrl);
  state.photo=null;state.photoUrl=null;$('photo-result').hidden=true;
  const error=validateImage(file);
@@ -173,7 +174,9 @@ $('photo-input').onchange=e=>{
  state.photo=file;state.photoUrl=URL.createObjectURL(file);$('photo-preview').src=state.photoUrl;$('photo-preview').hidden=false;$('photo-placeholder').hidden=true;
  $('photo-note').textContent=state.vision?t('Фото отправится на обработку только после нажатия кнопки. При сомнении гид попросит уточнение.'):t('Фото выбрано и остаётся в браузере. Для распознавания нужно подключить ИИ.');
  $('identify-photo').disabled=!state.vision;
-};
+}
+$('photo-input').onchange=selectPhoto;
+$('photo-camera-input').onchange=selectPhoto;
 $('identify-photo').onclick=async()=>{
  if(!state.vision||!state.photo)return;
  photoController?.abort();photoController=new AbortController();const signal=photoController.signal;
