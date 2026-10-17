@@ -25,7 +25,11 @@ function persist(key,value){try{localStorage.setItem(key,JSON.stringify(value))}
 function toast(text){$('toast').textContent=text;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,5000)}
 function message(text){$('story-message').textContent=text;$('story-message').hidden=!text}
 function openDialog(id){if(!$(id).open)$(id).showModal()}
-function setStatus(text,error=false){$('discovery-status').textContent=text;$('discovery-status').classList.toggle('error',error)}
+function setStatus(text,error=false,progressTitle=''){
+ const status=$('discovery-status');status.replaceChildren();status.classList.toggle('error',error);status.classList.toggle('discovery-loading',!!progressTitle);
+ $('places').setAttribute('aria-busy',String(!!progressTitle));
+ if(progressTitle){const title=document.createElement('strong'),detail=document.createElement('span');title.textContent=progressTitle;detail.textContent=text;status.append(title,detail)}else status.textContent=text;
+}
 function showArt(node,p){
   node.replaceChildren();
   if(p.thumbnail && /^https:\/\/upload\.wikimedia\.org\//.test(p.thumbnail)){
@@ -156,16 +160,16 @@ $('voice-question').onclick=()=>{if(!SpeechRecognition||!state.ai)return;narrato
 $('story-dialog').addEventListener('close',()=>recognition?.abort());
 function resetPlaces(){nextDiscovery();searchController?.abort();state.places=[];state.emptyNearby=false;$('section-title').textContent=t('Найдите своё место');$('location-label').textContent=t('ВАШ ГОРОД, ВАШИ ИСТОРИИ');$('search-input').value='';$('reset-places').hidden=true;$('nearby-retry').hidden=false;setStatus(t('Введите город или название места либо повторите поиск рядом.'));renderPlaces()}
 $('reset-places').onclick=resetPlaces;
-$('search-form').onsubmit=async e=>{e.preventDefault();const query=$('search-input').value.trim();if(!query){resetPlaces();return}const token=nextDiscovery();searchController?.abort();searchController=new AbortController();setStatus(t('Ищем «')+query+t('» в источниках…'));try{await configReady;const found=state.multisource?await searchCatalog(query,searchController.signal,LANGUAGE):{places:await searchPlaces(query,searchController.signal,LANGUAGE)};const results=found.places;if(!searchEpoch.isCurrent(token))return;state.places=results;translateDiscovery(token,searchController.signal);state.emptyNearby=false;$('location-label').textContent=t('ИССЛЕДУЙТЕ ЛЮБОЕ МЕСТО');$('section-title').textContent=t('Результаты поиска');$('reset-places').hidden=false;setStatus(t('Найдено: ')+results.length+t('. Уточните объект по названию и источнику.')+(found.partial?t(' Часть источников недоступна — попробуйте повторить поиск.'):''));renderPlaces()}catch(e){if(e.name!=='AbortError'&&searchEpoch.isCurrent(token))setStatus(safeError(e,'Не удалось загрузить рассказ. Попробуйте другое место.'),true)}};
+$('search-form').onsubmit=async e=>{e.preventDefault();const query=$('search-input').value.trim();if(!query){resetPlaces();return}const token=nextDiscovery();searchController?.abort();searchController=new AbortController();setStatus(t('Ищем «')+query+t('» в источниках…'),false,t('Ищем достопримечательности')); try{await configReady;const found=state.multisource?await searchCatalog(query,searchController.signal,LANGUAGE):{places:await searchPlaces(query,searchController.signal,LANGUAGE)};const results=found.places;if(!searchEpoch.isCurrent(token))return;state.places=results;translateDiscovery(token,searchController.signal);state.emptyNearby=false;$('location-label').textContent=t('ИССЛЕДУЙТЕ ЛЮБОЕ МЕСТО');$('section-title').textContent=t('Результаты поиска');$('reset-places').hidden=false;setStatus(t('Найдено: ')+results.length+t('. Уточните объект по названию и источнику.')+(found.partial?t(' Часть источников недоступна — попробуйте повторить поиск.'):''));renderPlaces()}catch(e){if(e.name!=='AbortError'&&searchEpoch.isCurrent(token))setStatus(safeError(e,'Не удалось загрузить рассказ. Попробуйте другое место.'),true)}};
 function loadNearby(){
  const token=nextDiscovery();searchController?.abort();searchController=new AbortController();const signal=searchController.signal;
  const current=()=>searchEpoch.isCurrent(token)&&!signal.aborted;
  const fail=text=>{if(!current())return;setStatus(text,true);$('nearby-retry').hidden=false};
  if(!navigator.geolocation){fail(t('Геолокация недоступна. Найдите место по названию.'));return}
- setStatus(t('Определяем местоположение…'));
+ setStatus(t('Разрешите доступ к геопозиции в окне браузера. Или найдите место по названию.'),false,t('Определяем, где вы'));
  try{navigator.geolocation.getCurrentPosition(async pos=>{
   if(!current())return;
-  setStatus(t('Ищем места в радиусе 1,5 км…'));
+  setStatus(t('Собираем интересные места поблизости. Это может занять несколько секунд.'),false,t('Ищем достопримечательности рядом'));
   try{
    await configReady;if(!current())return;
    const results=await (state.multisource?discoverNearby:nearbyPlaces)(pos.coords.latitude,pos.coords.longitude,signal,LANGUAGE);
