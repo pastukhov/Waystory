@@ -11,7 +11,7 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
    const context=await browser.newContext({locale:language==='ru'?'ru-RU':'en-GB',viewport:{width:390,height:844}});
    if(language==='en')await context.addInitScript(()=>localStorage.setItem('waystory-saved',JSON.stringify([{id:'legacy-place',title:'Старая русская карточка',subtitle:'Русское описание',lang:'ru',source:'https://ru.wikipedia.org/wiki/Test',blocks:[{id:'old',depth:0,title:'Главное',text:'Русский источник.'}]}])));
    const page=await context.newPage(),errors=[];page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
-   let failStory=false,configDelay=0,signedIn=true,failSession=false;const calls=[];
+   let storyGate=null,releaseStory;let failStory=false,configDelay=0,signedIn=true,failSession=false;const calls=[];
    const title=language==='ru'?'Казанский собор':'Kazan Cathedral';
    await page.route('https://fonts.googleapis.com/**',r=>r.abort());
    await page.route('https://fonts.gstatic.com/**',r=>r.abort());
@@ -22,6 +22,7 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
     const body=r.request().postDataJSON();calls.push(body);assert.equal(body.language,language);
     if(body.action==='translatePlaces')return r.fulfill({json:{language,places:body.places.map(p=>({...p,title,subtitle:language==='ru'?'История города':'City history'}))}});
     if(body.action==='story'){
+     if(storyGate)await storyGate;
      if(failStory)return r.fulfill({status:502,json:{error:'Translation temporarily unavailable'}});
      return r.fulfill({json:{title,language,storyVersion:5,detailLimited:false,blocks:[{id:'s0',depth:0,title,text:(language==='ru'?'Главное. ':'Essentials. ').repeat(40)},{id:'s1',depth:1,title,text:(language==='ru'?'История. ':'History. ').repeat(80)},{id:'s2',depth:2,title,text:(language==='ru'?'Подробности. ':'Details. ').repeat(150)}]}});
     }
@@ -58,7 +59,21 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
    await page.waitForFunction(()=>/ИИ-гид подключён:|AI guide connected:/.test(document.querySelector('#mode-note p')?.textContent||''));await page.waitForFunction(expected=>document.querySelector('.card-title')?.textContent===expected,title);
    assert.equal(await page.locator('html').getAttribute('lang'),language);
    if(language==='en'){await page.locator('[data-tab="saved"]').click();await page.waitForFunction(expected=>document.querySelector('#library-grid .card-title')?.textContent===expected,title);await page.locator('[data-tab="explore"]').click();}
-   await page.locator('.card-listen').first().click();await page.waitForFunction(expected=>document.querySelector('#story-title')?.textContent===expected&&!document.querySelector('#story-play').disabled,title);
+   async function assertLoading(){
+    await page.locator('#story-loading').waitFor({state:'visible'});
+    assert.match(await page.locator('#story-loading').innerText(),language==='ru'?/Готовим рассказ/:/Preparing your story/);
+    for(const selector of ['.depth-label','.depth-switch','.story-play-row'])assert.equal(await page.locator(selector).isVisible(),false,selector);
+    assert.equal(await page.locator('#duration-label').textContent(),'');
+   }
+   storyGate=new Promise(resolve=>{releaseStory=resolve});
+   await page.locator('.card-listen').first().click();await assertLoading();releaseStory();storyGate=null;
+   await page.waitForFunction(()=>!document.querySelector('#story-play').disabled);
+   assert.equal(await page.locator('#story-loading').isVisible(),false);
+   // Refresh must hide controls and old duration again until the new story arrives.
+   storyGate=new Promise(resolve=>{releaseStory=resolve});await page.locator('#story-refresh').click();await assertLoading();releaseStory();storyGate=null;
+   await page.waitForFunction(expected=>document.querySelector('#story-title')?.textContent===expected&&!document.querySelector('#story-play').disabled,title);
+   assert.equal(await page.locator('#story-loading').isVisible(),false);
+   assert.equal(await page.locator('.story-play-row').isVisible(),true);
    const route=new URL(await page.locator('#story-map a').getAttribute('href'));assert.equal(route.searchParams.get('destination'),'36.57,31.98');assert.equal(await page.locator('#story-map a').getAttribute('rel'),'noopener noreferrer');
    const durations=[];
    for(const depth of [0,1,2]){await page.locator('.depth-switch [data-depth="'+depth+'"]').click();assert.equal(await page.locator('.story-block').count(),depth+1);durations.push(await page.locator('#duration-label').innerText())}
@@ -106,7 +121,7 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
    assert.match(await page.locator('#story-original').textContent(),/Hacımehmetli/);assert.match(await page.locator('#story-sources').textContent(),language==='ru'?/Региональный контекст/:/Regional context/);assert.equal(await page.locator('#story-sources a').first().getAttribute('href'),'https://en.wikivoyage.org/?curid=1');assert.equal(await page.locator('.story-block .citation-links a').count(),0);assert.equal(await page.locator('#story-sources').isVisible(),false);await page.locator('#story-attribution summary').click();assert.equal(await page.locator('#story-sources').isVisible(),true);await page.locator('#story-attribution summary').click();
    for(const width of [320,390,780]){await page.setViewportSize({width,height:844});const b=await page.locator('#story-dialog').evaluate(el=>({width:el.clientWidth,scroll:el.scrollWidth}));assert.ok(b.scroll<=b.width+1,JSON.stringify(b))}
    missing=true;await page.locator('#story-refresh').click();await page.waitForFunction(()=>document.querySelector('#story-message').textContent.includes('Not enough')||document.querySelector('#story-message').textContent.includes('Недостаточно'));assert.equal(await page.locator('#story-map a').count(),1);assert.equal(await page.locator('#story-play').isDisabled(),true);assert.equal(await page.locator('#story-refresh').isVisible(),true);
-   for(const selector of ['.depth-label','.depth-switch','#duration-label','#story-detail-notice','#story-source-note','#question-panel'])assert.equal(await page.locator(selector).isVisible(),false,selector);assert.equal(await page.locator('#story-save').isEnabled(),true);assert.equal(await page.locator('#story-sources a').count()>0,true);
+   for(const selector of ['.depth-label','.depth-switch','.story-play-row','#story-loading','#duration-label','#story-detail-notice','#story-source-note','#question-panel'])assert.equal(await page.locator(selector).isVisible(),false,selector);assert.equal(await page.locator('#story-save').isEnabled(),true);assert.equal(await page.locator('#story-sources a').count()>0,true);
    await page.waitForFunction(()=>document.querySelector('#story-materials a')?.textContent==='Official guide osm:node:2');
    assert.equal(await page.locator('#story-materials').isVisible(),true);assert.equal(await page.locator('#story-materials > ul').first().locator('a').count(),8);
    assert.equal(await page.locator('#story-materials a').first().getAttribute('rel'),'noopener noreferrer');
