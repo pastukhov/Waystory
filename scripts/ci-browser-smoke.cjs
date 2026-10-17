@@ -46,7 +46,7 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
    assert.equal(await camera.element().getAttribute('capture'),'environment');assert.equal(await camera.element().getAttribute('accept'),'image/*');
    const image=await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=32;canvas.height=32;return canvas.toDataURL('image/png').split(',')[1]});
    const photo={name:'camera.png',mimeType:'image/png',buffer:Buffer.from(image,'base64')};
-   await camera.setFiles(photo);assert.equal(await page.locator('#photo-preview').isVisible(),true);assert.equal(await page.locator('#identify-photo').isEnabled(),true);
+   await camera.setFiles(photo);await page.locator('#photo-preview').waitFor({state:'visible'});assert.equal(await page.locator('#photo-preview').isVisible(),true);assert.equal(await page.locator('#identify-photo').isEnabled(),true);
    assert.equal(calls.filter(x=>x.action==='identify').length,0);
    const galleryPicker=page.waitForEvent('filechooser');await page.locator('.photo-drop').click();const gallery=await galleryPicker;
    assert.equal(await gallery.element().getAttribute('capture'),null);await gallery.setFiles(photo);
