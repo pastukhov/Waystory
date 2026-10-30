@@ -188,7 +188,7 @@ function loadNearby(){
  const fail=text=>{if(!current())return;setStatus(text,true);$('nearby-retry').hidden=false};
  if(!navigator.geolocation){fail(t('Геолокация недоступна. Найдите место по названию.'));return}
  setStatus(t('Разрешите доступ к геопозиции в окне браузера. Или найдите место по названию.'),false,t('Определяем, где вы'));
- try{navigator.geolocation.getCurrentPosition(async pos=>{
+ const locate=precise=>{try{navigator.geolocation.getCurrentPosition(async pos=>{
   if(!current())return;
   setStatus(t('Собираем интересные места поблизости. Это может занять несколько секунд.'),false,t('Ищем достопримечательности рядом'));
   try{
@@ -197,8 +197,16 @@ function loadNearby(){
    if(!current())return;
    state.places=results.places;translateDiscovery(token,signal);state.emptyNearby=true;$('section-title').textContent=t('Рядом с вами');$('location-label').textContent=t('В РАДИУСЕ ')+(results.radius/1000).toLocaleString(LANGUAGE_TAG)+t(' КМ');$('reset-places').hidden=false;setStatus(t('Найдено: ')+results.places.length+t('. Радиус — ')+(results.radius/1000).toLocaleString(LANGUAGE_TAG)+t(' км. Точность геопозиции — около ')+Math.round(pos.coords.accuracy)+t(' м. Координаты: ')+pos.coords.latitude.toFixed(4)+', '+pos.coords.longitude.toFixed(4)+'.'+(results.partial?t(' Часть источников недоступна — попробуйте повторить поиск.'):''));renderPlaces()
   }catch(error){fail(safeError(error,'Не удалось найти места рядом. Повторите поиск или введите город.'))}
- },error=>fail(error.code===1?t('Доступ к местоположению запрещён. Разрешите его в настройках сайта или воспользуйтесь поиском.'):t('Не удалось определить местоположение. Попробуйте на открытом месте или введите название.')),{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
- }catch{fail(t('Геолокация недоступна. Найдите место по названию.'))}
+ },error=>{
+  if(!current())return;
+  if(precise&&(error.code===2||error.code===3)){
+   setStatus(t('Точная геопозиция пока недоступна. Пробуем определить примерное местоположение.'),false,t('Определяем, где вы'));
+   locate(false);return;
+  }
+  fail(error.code===1?t('Доступ к местоположению запрещён. Разрешите его в настройках сайта или воспользуйтесь поиском.'):error.code===3?t('Браузер не успел определить местоположение. Повторите попытку или введите название места.'):t('Браузер не смог получить координаты. Проверьте геолокацию телефона или введите название места.'));
+ },{enableHighAccuracy:precise,timeout:precise?15000:10000,maximumAge:60000});
+ }catch{fail(t('Геолокация недоступна. Найдите место по названию.'))}};
+ locate(true);
 }
 $('nearby-retry').onclick=loadNearby;
 $('photo-open').onclick=()=>openDialog('photo-dialog');
