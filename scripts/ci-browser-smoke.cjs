@@ -134,6 +134,24 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
    if(language==='en'){await page.locator('[data-close="story-dialog"]').click();await page.locator('[data-tab="saved"]').click();const before=calls;const regenerated=page.waitForResponse(r=>r.url().endsWith('/api/guide')&&r.request().postDataJSON()?.action==='story');await page.locator('#library-grid .card-listen').click();await regenerated;await page.waitForFunction(()=>document.querySelector('#story-title').textContent==='Regenerated saved story'&&!document.querySelector('#story-play').disabled);assert.equal(calls,before+1);assert.match(await page.locator('#story-source-note').textContent(),/AI/)}
    assert.deepEqual(errors,[]);await ctx.close();console.log(language+': multi-source mobile, citations, stale response, retry and library passed');
   }
+  // Regression: canonical English identity must not force English text after AI rejection.
+  {
+   const ctx=await browser.newContext({locale:'ru-RU',viewport:{width:390,height:844}}),page=await ctx.newPage(),editions=[];
+   const station={id:'wiki:en:8392086',refs:[{provider:'wikipedia',language:'en',pageId:8392086},{provider:'wikipedia',language:'ru',pageId:231936}],names:{original:'Moscow Belorussky railway station',ru:'Белорусский вокзал'},category:'place',sourceIds:[]};
+   await page.route('https://fonts.**/**',r=>r.abort());
+   await page.route('**/api/session',r=>r.fulfill({json:{enabled:true,user:{name:'Pilot'}}}));
+   await page.route('**/api/config',r=>r.fulfill({json:{ai:true,multisource:true,tts:false}}));
+   await page.route('**/api/places/search?**',r=>r.fulfill({json:{places:[station],sources:[],statuses:[]}}));
+   await page.route('**/api/places/enrich',r=>r.fulfill({json:{officialLinks:[],discoveryStatus:{web:'not_needed',official:'empty'}}}));
+   await page.route('**/api/guide',r=>r.fulfill({status:502,json:{error:'Не удалось проверить факты в ИИ-рассказе. Попробуйте ещё раз.',code:'story_unverified'}}));
+   await page.route('https://*.wikipedia.org/**',r=>{const u=new URL(r.request().url());editions.push(u.hostname);assert.equal(u.searchParams.get('pageids'),'231936');return r.fulfill({json:{query:{pages:{231936:{pageid:231936,title:'Белорусский вокзал',extract:'Вокзал открыт в 1870 году. Он находится в Москве.',fullurl:'https://ru.wikipedia.org/wiki/Белорусский_вокзал'}}}}});});
+   await page.goto('http://127.0.0.1:'+app.address().port);
+   await page.locator('#search-input').fill('Белорусский вокзал');await page.locator('#search-form').evaluate(el=>el.requestSubmit());await page.locator('.card-listen').first().click();
+   await page.waitForFunction(()=>!document.querySelector('#story-play').disabled&&document.querySelector('#story-text').textContent.includes('Вокзал открыт'));
+   assert.deepEqual(editions,['ru.wikipedia.org']);assert.match(await page.locator('#story-text').innerText(),/Вокзал открыт/);assert.equal(await page.locator('#story-language-notice').isVisible(),false);
+   assert.match(await page.locator('#story-message').innerText(),/текст Википедии.*читать и слушать/);
+   await ctx.close();console.log('ru: Belorussky English identity, AI rejection, Russian readable/playable fallback passed');
+  }
  }finally{await browser?.close();await new Promise(r=>app.close(r))}
 })().catch(e=>{console.error(e);process.exitCode=1});
 

@@ -68,3 +68,17 @@ test('malformed optional review diagnostics cannot bypass rejection retry',async
  }});
  await assert.rejects(g.run({action:'story',placeId:'wd:Q1'}),e=>e.code==='story_unverified');assert.equal(generations,2);assert.equal(reviews,2);
 });
+
+test('retry receives the rejected draft and bounded review feedback',async()=>{
+ let generations=0,reviews=0;
+ const g=createGuide({env,collectSources:async()=>({...bundle,documents:[document,{...document,id:'other'}]}),fetchFn:async(_,o)=>{
+  const body=JSON.parse(o.body);
+  if(body.response_format.json_schema.name==='grounding'){
+   reviews++;assert.match(body.messages[0].content,/MUST belong to that block/);assert.match(body.messages[0].content,/never translate/);
+   return response(reviews===1?{supported:false,items:[],issues:[{index:0,reason:'unsupported_claim'},{index:99,reason:'INJECTED'}]}:{supported:true,items:[{index:0,sourceId:'s',quote:document.text}],issues:[]});
+  }
+  generations++;if(generations===2){const content=JSON.parse(body.messages[1].content);assert.deepEqual(content.previousDraft,output);assert.deepEqual(content.verificationFeedback,{reason:'model_rejected',blockIndexes:[0],modelReasons:['unsupported_claim']});}
+  return response(output);
+ }});
+ await g.run({action:'story',placeId:'wd:Q1'});assert.equal(generations,2);assert.equal(reviews,2);
+});
