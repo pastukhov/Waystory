@@ -24,3 +24,8 @@ test('speech diagnostics consume and validate complete audio through the product
 });
 test('source operations are fixed and cannot accept URL or arbitrary arguments',()=>{for(const operation of ['sources-test','web-source-test','global-source-test'])assert.equal(validateRequest({id:'source-test-1',operation}).operation,operation);assert.throws(()=>validateRequest({id:'source-test-1',operation:'sources-test',url:'https://evil.test'}))});
 
+
+test('Belorussky regression probe is a fixed allowlisted operation',()=>{
+ assert.equal(validateRequest({id:'station-test-1',operation:'belorussky-story-test'}).operation,'belorussky-story-test');
+ assert.throws(()=>validateRequest({id:'station-test-1',operation:'belorussky-story-test',placeId:'arbitrary'}));
+});

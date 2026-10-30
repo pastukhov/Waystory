@@ -23,3 +23,18 @@ test('nearby deduplicates translated articles using Wikidata ID',async()=>{const
 test('opening a searched place retrieves coordinates and retains the source title',async()=>{const old=globalThis.fetch;globalThis.fetch=async()=>Response.json({query:{pages:{1:{pageid:1,title:'Hacımehmetli, Alanya',extract:'A village in Turkey.',coordinates:[{lat:36.57,lon:31.98}]}}}});try{const p=await loadPlace({id:'wiki-en-1',pageid:1,title:'Перевод',lang:'en'});assert.deepEqual(p.coords,[36.57,31.98]);assert.equal(p.originalTitle,'Hacımehmetli, Alanya')}finally{globalThis.fetch=old}});
 
 test('Vietnamese fallback never requests the same page id from Russian Wikipedia',async()=>{const old=globalThis.fetch;let host;globalThis.fetch=async url=>{host=new URL(url).hostname;return Response.json({query:{pages:{42:{pageid:42,title:'Tháp Rùa',extract:'Một ngôi tháp.'}}}})};try{await loadPlace({id:'wiki:vi:42',pageid:42,lang:'vi'});assert.equal(host,'vi.wikipedia.org')}finally{globalThis.fetch=old}});
+
+test('foreign fallback uses an explicit Russian ref and its own page ID',async()=>{
+ const old=globalThis.fetch;const requests=[];globalThis.fetch=async url=>{const u=new URL(url);requests.push(u);return Response.json({query:{pages:{231936:{pageid:231936,title:'Белорусский вокзал',extract:'Вокзал открыт в 1870 году.',fullurl:'https://ru.wikipedia.org/wiki/Белорусский_вокзал'}}}})};
+ try{const result=await loadPlace({id:'wiki:en:8392086',placeId:'wiki:en:8392086',lang:'en',pageid:8392086,refs:[{provider:'wikipedia',language:'en',pageId:8392086},{provider:'wikipedia',language:'ru',pageId:231936}]},undefined,'ru');assert.equal(requests[0].hostname,'ru.wikipedia.org');assert.equal(requests[0].searchParams.get('pageids'),'231936');assert.equal(result.lang,'ru');assert.equal(result.pageid,231936);assert.equal(result.placeId,'wiki:en:8392086');}finally{globalThis.fetch=old}
+});
+
+test('unavailable preferred edition preserves cached foreign text and its language',async()=>{
+ const old=globalThis.fetch;globalThis.fetch=async()=>{throw Error('offline')};
+ const place={id:'old',lang:'en',pageid:1,blocks:[{text:'Saved original text'}],refs:[{provider:'wikipedia',language:'ru',pageId:2}]};
+ try{assert.equal(await loadPlace(place,undefined,'ru'),place)}finally{globalThis.fetch=old}
+});
+test('preferred edition cancellation cannot fall back to another request',async()=>{
+ const old=globalThis.fetch,controller=new AbortController();let calls=0;globalThis.fetch=async()=>{calls++;controller.abort();throw new DOMException('Aborted','AbortError')};
+ try{await assert.rejects(loadPlace({lang:'en',pageid:1,refs:[{provider:'wikipedia',language:'ru',pageId:2}]},controller.signal,'ru'),e=>e.name==='AbortError');assert.equal(calls,1)}finally{globalThis.fetch=old}
+});

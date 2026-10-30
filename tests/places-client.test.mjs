@@ -20,3 +20,10 @@ test('a failed wider search preserves the nearby results and their actual radius
 test('dense results stop at the smallest radius and partial provider status is visible',async()=>{
  let calls=0;const result=await discoverNearby(36,32,null,'ru',async()=>{calls++;return Response.json({places:Array.from({length:5},(_,i)=>({...record,id:'osm:node:'+i})),sources:[],statuses:[{provider:'wikipedia',status:'partial'}]})});assert.equal(calls,1);assert.equal(result.radius,1500);assert.equal(result.partial,true);
 });
+
+test('Russian cards select the Russian Wikipedia ref even when the canonical record starts in English',()=>{
+ const refs=[{provider:'wikipedia',language:'en',pageId:8392086},{provider:'wikidata',id:'Q1367269'},{provider:'wikipedia',language:'ru',pageId:231936}];
+ const station={...record,id:'wiki:en:8392086',refs,names:{original:'Moscow Belorussky railway station',ru:'Белорусский вокзал'}};
+ const p=toLegacyPlace(station,[],'ru');assert.equal(p.lang,'ru');assert.equal(p.pageid,231936);assert.equal(p.source,'https://ru.wikipedia.org/?curid=231936');assert.equal(p.placeId,station.id);assert.equal(refs[0].language,'en');
+ assert.equal(toLegacyPlace(station,[],'en').pageid,8392086);
+});

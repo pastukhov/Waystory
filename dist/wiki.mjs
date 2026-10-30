@@ -40,7 +40,13 @@ export async function nearbyPlaces(lat,lon,signal,language='ru'){
 }
 
 function distance(a,b,c,d){const r=Math.PI/180,x=Math.sin((c-a)*r/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin((d-b)*r/2)**2;return Math.round(6371000*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x)))}
-export async function loadPlace(place,signal){
+export async function loadPlace(place,signal,language=place.lang){
+  // Edition page IDs are unrelated: switch only using the place's explicit refs.
+  const preferred=place.refs?.find(r=>r.provider==='wikipedia'&&r.language===language&&Number.isSafeInteger(r.pageId)&&r.pageId>0);
+  if(!place.aiGenerated&&preferred&&(preferred.language!==place.lang||preferred.pageId!==place.pageid)){
+    try{return await loadPlace({...place,lang:preferred.language,pageid:preferred.pageId,source:'https://'+preferred.language+'.wikipedia.org/?curid='+preferred.pageId,blocks:undefined},signal)}
+    catch(error){if(signal?.aborted||error.name==='AbortError')throw error;}
+  }
   if(place.blocks)return place;
   const j=await api({action:'query',pageids:place.pageid,prop:'extracts|info|coordinates',explaintext:1,exchars:9000,inprop:'url'},signal,edition(place.lang));
   const page=Object.values(j.query?.pages||{})[0];if(!page?.extract)throw new Error('Для этого места нет текста. Выберите другой объект.');
