@@ -43,7 +43,8 @@ previous_health="$("${docker_cmd[@]}" inspect waystory-waystory-1 --format '{{if
 if [[ ! -e /opt/waystory/operations/current-image && "$previous_health" == healthy && "$previous_image" =~ ^waystory:[a-f0-9]{40}$ ]]; then
   record_healthy_image /opt/waystory/operations "$previous_image"
 fi
-compose build --pull
+source scripts/build-image.sh
+build_with_registry_fallback compose
 compose up --detach --wait --wait-timeout 150
 compose exec -T waystory node -e \
   "fetch('http://127.0.0.1:5173/api/config').then(r=>{if(!r.ok)process.exit(1);console.log('Waystory is healthy')}).catch(()=>process.exit(1))"
