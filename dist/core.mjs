@@ -14,4 +14,19 @@ export function validateImage(file) {
   return null;
 }
 export function createEpoch() { let value=0;return {next:()=>++value,isCurrent:token=>token===value}; }
-export function splitSentences(text) { return (text.match(/[^.!?]+(?:[.!?]+|$)/gu)||[text]).map(s=>s.trim()).filter(Boolean); }
+// Keep address abbreviations, initials and decimals inside a sentence.
+export function splitSentences(text) {
+ const result=[];let start=0;
+ for(const match of text.matchAll(/[.!?]+[»”"')\]]*(?:\s+|$)/gu)){
+  const end=match.index+match[0].trimEnd().length,next=text.slice(match.index+match[0].length);
+  if(match[0].startsWith('.')&&!match[0].startsWith('..')&&next){
+   const word=text.slice(0,match.index).match(/([\p{L}]+)$/u)?.[1]||'';
+   const abbreviation=/^(?:ул|вл|д|им|кв|корп|стр|просп|пер|наб|пл|обл|Mr|Mrs|Ms|Dr|Prof|St)$/iu.test(word);
+   const initial=/^\p{Lu}$/u.test(word)&&/^\p{Lu}/u.test(next);
+   const unit=/^(?:тыс|млн|млрд|руб|коп|г|гг)$/iu.test(word)&&/^[\p{Ll}\d]/u.test(next);
+   if(abbreviation||initial||unit)continue;
+  }
+  const sentence=text.slice(start,end).trim();if(sentence)result.push(sentence);start=match.index+match[0].length;
+ }
+ const rest=text.slice(start).trim();if(rest)result.push(rest);return result;
+}

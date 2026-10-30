@@ -38,3 +38,10 @@ test('preferred edition cancellation cannot fall back to another request',async(
  const old=globalThis.fetch,controller=new AbortController();let calls=0;globalThis.fetch=async()=>{calls++;controller.abort();throw new DOMException('Aborted','AbortError')};
  try{await assert.rejects(loadPlace({lang:'en',pageid:1,refs:[{provider:'wikipedia',language:'ru',pageId:2}]},controller.signal,'ru'),e=>e.name==='AbortError');assert.equal(calls,1)}finally{globalThis.fetch=old}
 });
+test('fallback chapters keep the complete hospital address and initials together',async()=>{
+ const old=globalThis.fetch;
+ const address='Давыдковская больница имени А. М. Никифорова находится по адресу: ул. Давыдковская, вл. 7.';
+ const extract=address+' Строительство началось в 2011 году. Площадь — 52 тыс. кв. метров. Здесь четвёртое предложение.';
+ globalThis.fetch=async()=>Response.json({query:{pages:{1:{pageid:1,title:'Больница',extract}}}});
+ try{const result=await loadPlace({id:'wiki:ru:1',pageid:1,lang:'ru'});assert.equal(result.blocks[0].text,address+' Строительство началось в 2011 году. Площадь — 52 тыс. кв. метров.');assert.equal(result.blocks[1].text,'Здесь четвёртое предложение.')}finally{globalThis.fetch=old}
+});
