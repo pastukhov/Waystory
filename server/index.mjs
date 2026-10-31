@@ -21,6 +21,11 @@ import {createOsmProvider} from './sources/osm.mjs';
 import {createWebEnrichment} from './sources/tavily.mjs';
 import {createWikivoyageProvider} from './sources/wikivoyage.mjs';
 import {createWikidataProvider} from './sources/wikidata.mjs';
+import {createTourStore} from './tours/store.mjs';
+import {createTourJobs} from './tours/jobs.mjs';
+import {createTourResearch} from './tours/research.mjs';
+import {createTours,createTourModel,createTourCollector} from './tours/service.mjs';
+import {handleTourRoute} from './tours/routes.mjs';
 const root=fileURLToPath(new URL('../dist/',import.meta.url));
 const mime={'.html':'text/html; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
 async function readJson(req){
@@ -47,12 +52,21 @@ export function createApp(options={}){
  const acquire=places?createAcquisition({db:store?.db,collect:(p,o)=>places.collect(p,o),officialDiscovery:options.officialDiscovery||createOfficialDiscovery(),officialIdentity:(bundle,o)=>addOfficialIdentity(bundle,{...o,request:sourceRequest}),search:env.GLOBAL_SOURCE_DISCOVERY_ENABLED==='true'?globalSearch:null,report:entry=>console.log(JSON.stringify(entry))}):null;
  const tavilyConfigured=(settings.enabled&&!!enrichment?.enabled)||(!!globalSearch?.enabled&&globalSearch.configuredEngines.includes('tavily')&&env.GLOBAL_SOURCE_DISCOVERY_ENABLED==='true'&&globalPolicyReady);
  const guide=createGuide({...options,fetchFn:observability.wrapFetch(options.fetchFn),collectSources:options.collectSources||(places?async(id,o)=>{const p=store.getById(id);if(!p)throw new GuideError(404,'Место не найдено. Повторите поиск.');const result=await acquire(p,o);return {...result.bundle,outcome:result.outcome,diagnosticId:result.diagnosticId}}:undefined),resolveLegacy:options.resolveLegacy||(places?async(ref,o)=>{if(ref.title){const wiki=places.providers.find(p=>p.id==='wikipedia');const r=await wiki.resolveTitle(ref.title,ref.language,o);if(!r.places?.length)throw new GuideError(404,'Место не найдено.');return store.upsert(r.places[0]).id}return (await places.resolve(ref,o)).place.id}:undefined)}),speech=createSpeech({...options,fetchFn:observability.wrapFetch(options.fetchFn)}),auth=options.auth||createAuth({env:options.env,fetchFn:options.authFetchFn,dbPath:options.authDbPath});for(const [provider,enabled] of Object.entries({wikipedia:!!sourceRequest,wikivoyage:!!sourceRequest,wikidata:!!sourceRequest,osm:!!sourceRequest,tavily:tavilyConfigured,brave:!!globalSearch?.enabled&&globalSearch.configuredEngines.includes('brave')&&env.GLOBAL_SOURCE_DISCOVERY_ENABLED==='true',official_web:!!acquire,yandex_ai:guide.enabled&&guide.provider==='yandex',yandex_tts:speech.enabled&&speech.provider==='yandex',routerai_ai:guide.enabled&&guide.provider==='routerai',routerai_tts:speech.enabled&&speech.provider==='routerai'}))observability.record('configured',{provider,enabled});
+ const tourStore=store?.db&&guide.enabled?createTourStore({db:store.db}):null;
+ const tourJobs=options.tourJobs||(tourStore?createTourJobs({store:tourStore}):null);
+ const tourModel=createTourModel({env,fetchFn:observability.wrapFetch(options.fetchFn)});
+ const tours=options.tours||(tourStore&&places?createTours({store:tourStore,jobs:tourJobs,
+  research:createTourResearch({collect:createTourCollector({collect:(place,options)=>places.collect(place,options),request:sourceRequest}),search:env.GLOBAL_SOURCE_DISCOVERY_ENABLED==='true'?globalSearch:null}),
+  complete:tourModel.complete,review:tourModel.review,resolvePlace:async id=>store.getById(id),consume:ownerId=>auth.consume({id:ownerId},'ai')
+ }):null);
+ const toursAvailable=guide.enabled&&!!tourStore&&!!tours;
  const server=http.createServer((req,res)=>observability.request(req,res,async()=>{
  const json=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data))};
  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: https://upload.wikimedia.org; media-src 'self' blob:; connect-src 'self' https://*.wikipedia.org; object-src 'none'; base-uri 'self'");
  let pathname;try{pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname)}catch{return json(400,{error:'Неверный адрес.'})}
  if(pathname==='/metrics'){const access=observability.authorize(req.headers.authorization);if(access==='disabled')return json(404,{error:'Not found'});if(access!=='allowed'){res.setHeader('WWW-Authenticate','Bearer');return json(401,{error:'Unauthorized'})}if(req.method!=='GET')return json(405,{error:'Method not allowed'});res.writeHead(200,{'Content-Type':'text/plain; version=0.0.4; charset=utf-8','Cache-Control':'no-store'});return res.end(observability.render())}
  const redirect=(location,cookies)=>{res.writeHead(303,{'Location':location,'Cache-Control':'no-store','Referrer-Policy':'no-referrer',...(cookies?{'Set-Cookie':cookies}:{})});res.end()};
+ if(await handleTourRoute(req,res,{auth,tours,settings:{available:toursAvailable},readJson,json}))return;
  if(pathname.startsWith('/api/places/')){
   if(!settings.enabled||!places)return json(503,{error:'Поиск по дополнительным источникам пока выключен.'});
   const controller=new AbortController();req.once?.('aborted',()=>controller.abort());res.once?.('close',()=>{if(!res.writableEnded)controller.abort()});
@@ -97,8 +111,8 @@ export function createApp(options={}){
  }
  let user=null;
  try{if(['/api/config','/api/guide','/api/speech'].includes(pathname))user=auth.session(req.headers.cookie)}catch{return json(503,{error:'Вход временно недоступен.'})}
- if(pathname==='/api/config'&&!user)return json(200,{ai:false,mode:'demo',multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!acquire});
- if(pathname==='/api/config')return json(200,guide.enabled?{ai:true,mode:'live',multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!acquire,vision:true,tts:speech.enabled}:{ai:false,mode:'demo',multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!acquire,...(speech.enabled?{tts:true}:{})});
+ if(pathname==='/api/config'&&!user)return json(200,{ai:false,mode:'demo',tours:false,multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!acquire});
+ if(pathname==='/api/config')return json(200,guide.enabled?{ai:true,mode:'live',tours:toursAvailable,multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!acquire,vision:true,tts:speech.enabled}:{ai:false,mode:'demo',tours:false,multisource:settings.enabled&&!!places,webEnrichment:settings.enabled&&!!acquire,...(speech.enabled?{tts:true}:{})});
  if(pathname==='/api/guide'||pathname==='/api/speech'){
   if(!auth.origin&&req.headers.origin){try{if(new URL(req.headers.origin).host!==req.headers.host)return json(403,{error:'Запрос с другого сайта запрещён.'})}catch{return json(403,{error:'Неверный источник.'})}}
   if(req.method!=='POST')return json(405,{error:'Метод не поддерживается.'});
@@ -127,10 +141,29 @@ export function createApp(options={}){
  if(pathname.split('/').some(s=>s.startsWith('.'))||pathname.includes('\\'))return json(404,{error:'Не найдено.'});
  const file=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));if(!file.startsWith(root))return json(404,{error:'Не найдено.'});
  try{const body=await readFile(file);res.writeHead(200,{'Content-Type':mime[path.extname(file)]||'application/octet-stream'});res.end(req.method==='HEAD'?undefined:body)}catch{json(404,{error:'Не найдено.'})}
-}));server.on('close',()=>{auth.close?.();store?.close?.()});return server}
+}));
+ let shutdown;
+ server.on('close',()=>{shutdown||=(async()=>{await tourJobs?.shutdown();auth.close?.();store?.close?.()})()});
+ const close=server.close.bind(server);
+ server.close=callback=>close(error=>{Promise.resolve(shutdown).then(()=>callback?.(error),failure=>callback?.(error||failure))});
+ return server}
+export function closeOnSignals(server,{processTarget=process,timeoutMs=5000}={}){
+ let closing=false;
+ const close=()=>{
+  if(closing)return;closing=true;
+  const timer=setTimeout(()=>server.closeAllConnections?.(),timeoutMs);timer.unref?.();
+  server.close(error=>{
+   clearTimeout(timer);
+   processTarget.removeListener('SIGTERM',close);processTarget.removeListener('SIGINT',close);
+   if(error)processTarget.exitCode=1;
+  });
+ };
+ processTarget.on('SIGTERM',close);processTarget.on('SIGINT',close);
+}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  loadEnvironment();
  const {host,port}=serverAddress();
- createApp().listen(port,host,()=>console.log('Waystory: http://'+host+':'+port));
+ const server=createApp();closeOnSignals(server);
+ server.listen(port,host,()=>console.log('Waystory: http://'+host+':'+port));
 }
 
