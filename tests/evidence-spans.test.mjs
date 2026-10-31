@@ -30,3 +30,7 @@ test('one long token and whitespace-only paragraphs terminate with bounded spans
  assert.ok(spans.length>=4);assert.equal(spans.at(-1).end,text.length+5);for(const s of spans)assert.ok(s.text.length<=1200);
  assert.deepEqual(spansModule.buildEvidenceSpans([doc(' \n\r\n\t ')]),[]);
 });
+test('source and revision field boundaries cannot collide in span identity',()=>{
+ const [a,b]=spansModule.buildEvidenceSpans([doc('Same snapshot.',{id:'wikipedia:en:1',revision:'23'}),doc('Same snapshot.',{id:'wikipedia:en:12',revision:'3'})]);
+ assert.notEqual(a.id,b.id);
+});

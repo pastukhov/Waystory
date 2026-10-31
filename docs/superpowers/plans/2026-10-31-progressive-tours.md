@@ -46,7 +46,7 @@
 
 `EvidenceSpan={id,sourceId,revision,start,end,text,scope,language}`.
 start/end — индексы UTF-16 в неизменном разрешённом тексте; `text===document.text.slice(start,end)`.
-id = SHA256(sourceId + revision + SHA256(document.text) + start + end), hex.
+id = SHA256(JSON.stringify([sourceId, revision, SHA256(document.text), start, end])), hex. Явные границы полей исключают коллизии склейки разных sourceId/revision.
 
 `Topic={id,title,summary,evidenceIds:string[],status:'available'|'limited',reason:null|string}`.
 `Chapter={id,topicId,status:'planned'|'generating'|'ready'|'failed'|'insufficient',text:null|string,evidenceIds:string[],claims:Claim[],coveredFactKeys:string[],estimatedSeconds:number,error:null|PublicError}`.
@@ -104,7 +104,7 @@ Interfaces: `buildEvidenceSpans(documents):EvidenceSpan[]`; `reviewChapter({text
 - [x] Legacy validateSupport пока сохранить для /api/guide. Новый путь включить только tours, чтобы не менять старый контракт одним PR.
 - [ ] node --test tests/evidence-spans.test.mjs tests/chapter-review.test.mjs; npm test; commit/CI/Deploy.
 
-Task 2 implementation note: reviewer accepts optional `consumeCall()` (awaited before every real model request; false/throw denies), `deadline` (epoch ms), and injected `now`. The later tour service owns their shared budget/quota. Review uses at most one technical repair (2000 output tokens after the initial 3000), keeps all chapter text and supplied original spans, and never repairs semantic rejection. Existing guide review is unchanged. Fixture tests verify the request and response contract without paid model calls. Local targeted tests: 21 passing; full suite: 359 passing; syntax/diff checks passing. Review/CI/Deploy pending.
+Task 2 implementation note: reviewer accepts optional `consumeCall()` (awaited before every real model request; false/throw denies), `deadline` (epoch ms), and injected `now`. The later tour service owns their shared budget/quota. Review uses at most one technical repair (2000 output tokens after the initial 3000), keeps all chapter text and supplied original spans, and never repairs semantic rejection. Existing guide review is unchanged. Fixture tests verify the request and response contract without paid model calls. Local targeted tests: 22 passing; full suite: 360 passing; syntax/diff checks passing. Astra found ambiguous hash field concatenation; the identity tuple now uses JSON encoding, with a regression test. Final review/CI/Deploy pending.
 
 ## Task 3 / PR3 — Исследование тем и полные разрешённые материалы
 

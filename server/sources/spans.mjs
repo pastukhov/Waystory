@@ -24,7 +24,7 @@ export function buildEvidenceSpans(documents){
      if(whitespace>0)end=start+whitespace;
      else if(/[\uD800-\uDBFF]/.test(text[end-1])&&/[\uDC00-\uDFFF]/.test(text[end]))end--;
     }
-    spans.push(Object.freeze({id:hash(document.id+revision+snapshotHash+start+end),sourceId:document.id,revision,start,end,text:text.slice(start,end),scope:document.scope,language:document.language}));
+    spans.push(Object.freeze({id:hash(JSON.stringify([document.id,revision,snapshotHash,start,end])),sourceId:document.id,revision,start,end,text:text.slice(start,end),scope:document.scope,language:document.language}));
     if(end===paragraphEnd)break;
     let next=Math.max(start+1,end-OVERLAP);
     // Move forward to a word boundary, keeping overlap at most 150 units.
