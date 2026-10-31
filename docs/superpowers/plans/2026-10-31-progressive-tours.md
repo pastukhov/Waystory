@@ -231,3 +231,11 @@ Task 8 implementation ruling: playback payload adds a UUID `attemptId` so first_
 ## Передача Sol — вставить как стартовое сообщение
 
 > Реализуй план docs/superpowers/plans/2026-10-31-progressive-tours.md. Сначала прочитай связанный spec и AGENTS.md. Начни с Task 1, выполняй по одному PR, не пропускай диагностику и проверки. Сайт частный, только для владельца после входа: не добавляй feature flag или ручной этап включения. После выкладки проверь реальную экскурсию по Кусково. Автомерж разрешён; подтверждение на каждое слияние не требуется. Не меняй поставщиков, тарифы и бюджеты, не ослабляй проверку фактов. Сохраняй прогресс в чекбоксах плана и сообщай фактический статус деплоя.
+
+## Task 8/9 real probe follow-up — 2026-10-31
+
+PR #69 merged `c3bee91c0b97cc52d65e589b2886261385fa64c4`; main CI `41198820581` and Deploy `41198884981` succeeded. Operations diagnose `41198921591` succeeded: source DB 741,376 bytes, free disk 23,063,228,416 / 42,090,168,320 bytes; no cleanup performed. Anonymous session/config gating was checked; owner browser and physical Android remain unverified.
+
+Real fixed fresh Kuskovo probe [41198945928](https://github.com/pastukhov/Waystory/actions/runs/41198945928) failed honestly. Research: 5 documents, 28,856 characters, ru/en/be, positive snapshot TTL for admitted text, 0 searches / 0 loaded web pages, 2,361 ms. Configured search-snippet policy has TTL=0; its text was not admitted or persisted. Planning succeeded in 8,097 ms. Overview failed output validation after two model attempts (29,464 ms), before any grounding request: one tour_plan and two tour_chapter calls, 45,038 input / 6,225 output tokens, complete usage reporting. No price estimate or review bypass.
+
+Follow-up adds enum-only chapter output diagnostics to identify the exact rejecting predicate on the next deployed bounded probe. Validation, providers, quotas and model/search limits remain unchanged. This failed run does not satisfy Task 8/9 acceptance.
