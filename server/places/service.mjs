@@ -9,7 +9,7 @@ export function createPlaces({store,providers,now=Date.now,enrichment}={}){
  const open=providers.filter(p=>['wikipedia','osm','wikidata','wikivoyage'].includes(p.id)),cache=new Map();let minute=now(),calls=0,active=0;
  function language(l){if(!['ru','en'].includes(l))throw bad()}
  function save(results){const documents=results.flatMap(r=>r.documents||[]),places=mergePlaces(results.flatMap(r=>r.places||[])).map(p=>store.upsert(p));return {places,sources:[...new Map(documents.map(d=>[d.id,publicSource(d)])).values()]}}
- async function hydrate(results,signal,{skipKnown=false,language='ru'}={}){
+ async function hydrate(results,signal,{skipKnown=false,language='ru',profile='legacy'}={}){
   const wiki=open.find(p=>p.id==='wikipedia');if(!wiki?.resolveTitle)return {attempted:0,failed:0};
   const links=[];for(const r of results)for(const doc of r.documents||[]){
    const editions=selectSourceLanguages({languages:[doc.language,...(doc.context?.languages||[])]},{outputLanguage:language});
@@ -23,7 +23,7 @@ export function createPlaces({store,providers,now=Date.now,enrichment}={}){
   const pending=links.filter(link=>!skipKnown||!known.some(d=>d.language===link.language&&d.title.replaceAll('_',' ')===link.title.replaceAll('_',' ')));
   const selected=[],editions=new Set(known.map(d=>d.language).slice(0,3));
   for(const link of pending){if(skipKnown&&!editions.has(link.language)&&editions.size>=3)continue;editions.add(link.language);selected.push(link);if(selected.length===12)break}
-  const out=await Promise.allSettled(selected.map(async({doc,title,language})=>{const found=await wiki.resolveTitle(title,language,{signal});for(const p of found.places){const original=results.flatMap(r=>r.places||[]).find(p=>p.sourceIds.includes(doc.id)||p.refs.some(r=>refKey(r)===doc.id));if(original)p.refs.push(...original.refs)}return found}));
+  const out=await Promise.allSettled(selected.map(async({doc,title,language})=>{const found=await wiki.resolveTitle(title,language,{signal,profile});for(const p of found.places){const original=results.flatMap(r=>r.places||[]).find(p=>p.sourceIds.includes(doc.id)||p.refs.some(r=>refKey(r)===doc.id));if(original)p.refs.push(...original.refs)}return found}));
   results.push(...out.filter(r=>r.status==='fulfilled').map(r=>r.value));
   return {attempted:selected.length,failed:out.filter(r=>r.status==='rejected').length};
  }
@@ -42,12 +42,12 @@ export function createPlaces({store,providers,now=Date.now,enrichment}={}){
   const bundle=await collector(place,options);
   const resolved=[{places:[store.getById(place.id)||place],documents:bundle.documents}];
   const signal=options.signal?AbortSignal.any([options.signal,AbortSignal.timeout(options.hydrationTimeoutMs||3000)]):AbortSignal.timeout(options.hydrationTimeoutMs||3000);
-  const recovery=await hydrate(resolved,signal,{skipKnown:true,language:options.language});options.signal?.throwIfAborted();
+  const recovery=await hydrate(resolved,signal,{skipKnown:true,language:options.language,profile:options.profile});options.signal?.throwIfAborted();
   if(!recovery.attempted)return bundle;
   const saved=save(resolved),updated=saved.places.find(p=>p.id===place.id)||store.getById(place.id)||place;
   const documents=resolved.flatMap(r=>r.documents||[]);
   const statuses=bundle.statuses.map(s=>s.provider!=='wikipedia'?s:{...s,status:recovery.failed?(documents.some(d=>d.provider==='wikipedia')?'partial':'unavailable'):documents.some(d=>d.provider==='wikipedia')?'ok':'empty'});
-  return sourceBundle(updated,documents,statuses);
+  return sourceBundle(updated,documents,statuses,{profile:options.profile});
  }};
 }
 

@@ -108,3 +108,8 @@ test('prioritizes exhibition detail over child activities and excludes cinema ev
  assert.ok(!result.links.some(l=>l.url.endsWith('/movie/')||l.url.endsWith('/concert/')));
  assert.ok(!JSON.stringify(result).includes('copyrighted prose'));
 });
+test('redirect re-resolves same hostname and rejects DNS rebinding into private network',async()=>{
+ const {EventEmitter}=await import('node:events');const {Readable}=await import('node:stream');let lookups=0,sockets=0;
+ const http=createOfficialHttp({lookup:async()=>[{address:++lookups===1?'93.184.216.34':'127.0.0.1',family:4}],requestFn:(_url,_options,callback)=>{sockets++;const req=new EventEmitter();req.end=()=>queueMicrotask(()=>{const res=Readable.from([]);res.statusCode=302;res.headers={location:'/palace'};callback(res)});return req}});
+ await assert.rejects(http('https://museum.example/'),/not public/);assert.equal(sockets,1);assert.equal(lookups,2);
+});

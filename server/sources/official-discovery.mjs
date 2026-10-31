@@ -1,3 +1,5 @@
+import domainsDefault from './official-domains.json' with {type:'json'};
+import {sourcePolicy,licenseFor} from './policies.mjs';
 import {lookup as dnsLookup} from 'node:dns/promises';
 import {request as httpsRequest} from 'node:https';
 import {isIP} from 'node:net';
@@ -93,10 +95,11 @@ function classify(value) {
  const text=value.normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
  if (/audio|аудио|аудiо|audiogid|sesli|am thanh|mave\.digital|podcast|soundcloud|izi\.travel/.test(text)) return 'audio';
  if (/guide|гид|путевод|rehber|huong dan/.test(text)) return 'guide';
+ if (/independent.visit|самостоятельн.{0,20}посещ|self.guided|visitor.guide|plan.your.visit/.test(text)) return 'visitor';
  if (/exhibit|exposition|выстав|экспози|sergi|trien lam/.test(text)) return 'exhibition';
  return null;
 }
-function anchors(html,base) {
+function anchors(html,base,{all=false}={}) {
  const result=[];
  const body=html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,'').replace(/<!--[\s\S]*?-->/g,'');
  for (const match of body.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
@@ -106,7 +109,7 @@ function anchors(html,base) {
    const heading=/<([a-z][\w-]*)\b[^>]*class\s*=\s*["'][^"']*(?:__title|__sub|\btitle\b)[^"']*["'][^>]*>([\s\S]*?)<\/\1\s*>/i.exec(match[2])?.[2] || /<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]\s*>/i.exec(match[2])?.[1];
    const title=clean(heading||'')||clean(/\b(?:aria-label|title)\s*=\s*["']([^"']*)/i.exec(match[1])?.[1]||'')||clean(match[2]);
    const kind=classify(`${clean(match[2])} ${title} ${decodeURI(url.pathname)} ${url.hostname}`);
-   if(kind)result.push({url:url.href,title:title||url.hostname,kind});
+   if(kind||all)result.push({url:url.href,title:title||url.hostname,kind:kind||'page'});
   }catch{}
   if(result.length>=200)break;
  }
@@ -159,7 +162,7 @@ export function createOfficialDiscovery({request,now=Date.now,timeoutMs=8000,max
       const depth=linkedUrl.pathname.split('/').filter(Boolean).length;
       // Detail pages outrank generic sections; shallow exhibition pages outrank
       // their nested excursions/workshops. Audio always wins the next request.
-      const priority=({audio:100,guide:70,exhibition:40}[link.kind])-(depth<2?20:Math.min(15,depth));
+      const priority=({audio:100,guide:70,visitor:60,exhibition:40}[link.kind])-(depth<2?20:Math.min(15,depth));
       if(local&&!seen.has(link.url)&&!queue.some(q=>q.url===link.url))queue.push({url:link.url,root:item.root,priority});
      }
     }catch(error){lastReason=combined.aborted?(signal?.aborted?'aborted':'timeout'):(error.reason||'upstream_error');}
@@ -167,5 +170,27 @@ export function createOfficialDiscovery({request,now=Date.now,timeoutMs=8000,max
   }finally{clearTimeout(timer);}
   const status=successful?'ok':hadSeeds||lastReason?'unavailable':'empty';
   return {links:[...links.values()],statuses:[{provider:'official-web',status,...(lastReason?{reason:lastReason}:{})}]};
+ };
+}
+
+// Trusted internal loader; callers choose URLs from verified place identity or
+// matching search results. Never exposed as an arbitrary-URL HTTP endpoint.
+export function createOfficialPageLoader({request,domains=domainsDefault,now=Date.now}={}) {
+ const transport=request||createOfficialHttp();
+ return async function loadPage(value,{signal,onRequest=()=>{}}={}) {
+  const input=validateOfficialUrl(value);
+  if(request)onRequest();
+  const page=await aborted(signal,transport(input.href,{signal,maxBytes:MAX_BYTES,onRequest}));
+  const url=validateOfficialUrl(page.url||input.href);
+  if(!sameSite(input,url))throw fail('offsite_redirect');
+  if(typeof page.html!=='string'||Buffer.byteLength(page.html)>MAX_BYTES)throw fail('response_too_large');
+  const body=page.html.replace(/<(script|style|nav|footer|header)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,'').replace(/<!--[\s\S]*?-->/g,'');
+  const title=clean(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(body)?.[1]||url.hostname);
+  const text=entities(body.replace(/<\/(?:p|div|section|article|h[1-6]|li)>/gi,'\n\n').replace(/<[^>]*>/g,' ')).split(/\n+/).map(p=>p.replace(/\s+/g,' ').trim()).filter(Boolean).join('\n\n');
+  // A page cannot grant itself a sourcePolicy through HTML or a provider label.
+  const approved=domains.find(d=>d.host===url.hostname&&d.enabled===true&&d.rightsVerified===true&&d.allowModelInput===true&&d.allowTextCache===true&&['CC0-1.0','CC-BY-SA-4.0'].includes(d.licenseId)&&d.outputLicense===d.licenseId&&d.licenseUrl&&d.attribution&&(()=>{try{return !!validateOfficialUrl(d.permissionUrl)}catch{return false}})());
+  const policyId=approved?.policyId;
+  const links=anchors(body,url,{all:true});
+  return {document:{id:'web:'+url.href,provider:'official-web',url:url.href,title,language:/<html\b[^>]*\blang=["']([^"']+)/i.exec(page.html)?.[1]||'und',kind:'history',scope:'place',revision:'',text:sourcePolicy(policyId).allowModelInput?text:'',license:licenseFor(policyId,approved?.attribution||url.hostname),retrievedAt:new Date(now()).toISOString(),updatedAt:null,publishedAt:null},candidate:{url:url.href,title,snippet:text.slice(0,20000)},links};
  };
 }
