@@ -18,20 +18,29 @@ export function createTourJobs({store,now=Date.now,maxActive=LIMITS.maxJobsPerPr
    const jobToken=store.claimJob(ownerId,tourId,topicId,{retry});if(!jobToken)return {accepted:false};
    const controller=new AbortController(),deadline=now()+(topicId==='plan'?LIMITS.planTimeoutMs:LIMITS.chapterTimeoutMs);
    const job={ownerId,controller,jobToken,promise:null};active.set(key,job);
-   const timeout=()=>{controller.abort(tourError('provider_timeout'));store.failJob(jobToken,tourError('provider_timeout'));};
+   const timeout=()=>controller.abort(tourError('provider_timeout'));
    const timer=setTimeout(timeout,Math.max(1,deadline-now()));timer.unref?.();
-   job.promise=Promise.resolve().then(()=>{
-    controller.signal.throwIfAborted();return run({signal:controller.signal,jobToken});
-   }).then(result=>{
+   const failSafely=error=>{try {store.failJob(jobToken,error);} catch { /* A storage outage is recovered by the lease on later reads. */ }};
+   let onAbort;
+   const aborted=new Promise((resolve,reject)=>{onAbort=()=>reject(controller.signal.reason);controller.signal.addEventListener('abort',onAbort,{once:true});});
+   const work=Promise.resolve().then(()=>{controller.signal.throwIfAborted();return run({signal:controller.signal,jobToken});});
+   // Abort bounds the slot even when an upstream implementation ignores signal.
+   // Promise.race also observes late upstream rejection; token fencing rejects
+   // late completion without touching a subsequent job's slot.
+   job.promise=Promise.race([work,aborted]).then(result=>{
     if(now()>=deadline&&!controller.signal.aborted)timeout();
-    if(!controller.signal.aborted)store.completeJob(jobToken,result);
-   }).catch(error=>{store.failJob(jobToken,controller.signal.aborted?controller.signal.reason:error);}).finally(()=>{clearTimeout(timer);active.delete(key);});
+    controller.signal.throwIfAborted();store.completeJob(jobToken,result);
+   }).catch(error=>{failSafely(controller.signal.aborted?controller.signal.reason:error);}).finally(()=>{
+    clearTimeout(timer);controller.signal.removeEventListener('abort',onAbort);
+    if(active.get(key)===job)active.delete(key);
+   });
    return {accepted:true};
   },
   drain:()=>Promise.allSettled([...active.values()].map(job=>job.promise)),
   shutdown() {
    closed=true;
-   for(const job of active.values()) {job.controller.abort(tourError('provider_error',503));store.failJob(job.jobToken,job.controller.signal.reason);}
+   for(const job of active.values())job.controller.abort(tourError('provider_error',503));
+   return Promise.allSettled([...active.values()].map(job=>job.promise));
   },
   get activeCount(){return active.size;}
  };

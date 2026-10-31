@@ -19,7 +19,11 @@ const timedOut=()=>publicJobError(tourError('provider_timeout'));
 const emptyChapter=topicId=>({id:topicId,topicId,status:'planned',text:null,evidenceIds:[],claims:[],coveredFactKeys:[],estimatedSeconds:0,error:null});
 const documents=snapshot=>Array.isArray(snapshot)?snapshot:snapshot?.documents||[];
 const snapshotHash=snapshot=>createHash('sha256').update(JSON.stringify(documents(snapshot).map(d=>[d.id,d.revision,d.text,d.scope,d.language,d.license?.policyId]))).digest('hex');
-function snapshotTTL(snapshot) {return Math.min(LIMITS.ttlMs,...documents(snapshot).filter(d=>d.text).map(d=>sourcePolicy(d.license?.policyId).ttlMs).filter(n=>Number.isFinite(n)&&n>0));}
+function snapshotTTL(snapshot) {
+ const values=documents(snapshot).filter(d=>d.text).map(d=>sourcePolicy(d.license?.policyId).ttlMs);
+ if(values.some(n=>n===0))throw tourError('source_unavailable');
+ return Math.min(LIMITS.ttlMs,...values.filter(n=>Number.isFinite(n)&&n>0));
+}
 function permissions(snapshot) {
  const policies=documents(snapshot).filter(d=>d.text).map(d=>sourcePolicy(d.license?.policyId));
  return {text:policies.every(p=>p.allowTextCache===true),output:policies.every(p=>p.allowOutputCache===undefined?p.allowTextCache===true:p.allowOutputCache===true)};
@@ -49,7 +53,7 @@ export function createTourStore({db,now=Date.now,maxTours=LIMITS.maxTours,maxSto
  function remove(id) {db.prepare('DELETE FROM tours WHERE id=?').run(id);volatile.delete(id);}
  function recover() {
   for(const row of db.prepare('SELECT * FROM tour_chapters WHERE job_token IS NOT NULL AND lease_until<=?').all(now())) {
-   const data={...JSON.parse(row.data),status:'failed',error:timedOut()};
+   const data={...JSON.parse(row.data),status:'failed',error:timedOut()};delete data._failureReserve;
    db.prepare('UPDATE tour_chapters SET data=?,lease_until=NULL,job_token=NULL WHERE tour_id=? AND topic_id=?').run(JSON.stringify(data),row.tour_id,row.topic_id);
    if(row.topic_id==='plan') {const tour=db.prepare('SELECT data FROM tours WHERE id=?').get(row.tour_id);if(tour){const value={...JSON.parse(tour.data),status:'failed',error:data.error};db.prepare('UPDATE tours SET data=?,updated=? WHERE id=?').run(JSON.stringify(value),now(),row.tour_id);}}
   }
@@ -76,7 +80,7 @@ export function createTourStore({db,now=Date.now,maxTours=LIMITS.maxTours,maxSto
   if(row.expires<=now()&&!active(id))return null;return row;
  }
  function prepareSnapshot(id,snapshot,data) {
-  const policy=permissions(snapshot);data.storage={textCache:policy.text,outputCache:policy.output,snapshotHash:snapshotHash(snapshot)};
+  snapshotTTL(snapshot);const policy=permissions(snapshot);data.storage={textCache:policy.text,outputCache:policy.output,snapshotHash:snapshotHash(snapshot)};
   if(!policy.text)remember(id,{snapshot:copy(snapshot)});
   else if(volatile.get(id)?.snapshot)remember(id,{snapshot:undefined});
   return JSON.stringify(policy.text?snapshot:snapshotMetadata(snapshot));
@@ -88,7 +92,7 @@ export function createTourStore({db,now=Date.now,maxTours=LIMITS.maxTours,maxSto
    if(typeof topicId!=='string'||!topicId||topicId==='plan'||seen.has(topicId))throw Object.assign(tourError('invalid_request',400),{message:'Invalid or duplicate chapter.'});
    seen.add(topicId);
    const value={...emptyChapter(topicId),...chapter,id:chapter.id||topicId,topicId};
-   const persistent=outputCache?value:{...emptyChapter(topicId),volatile:true};
+   const persistent=outputCache?value:{...emptyChapter(topicId),id:value.id,volatile:true};
    if(!outputCache&&value.status!=='planned')remember(id,{chapters:{...volatile.get(id)?.chapters,[topicId]:value}});
    db.prepare('INSERT INTO tour_chapters(tour_id,topic_id,data) VALUES(?,?,?)').run(id,topicId,JSON.stringify(persistent));
   }
@@ -97,7 +101,7 @@ export function createTourStore({db,now=Date.now,maxTours=LIMITS.maxTours,maxSto
   const data=JSON.parse(row.data),output={id:row.id,version:1,placeId:row.place_id,language:row.language,sourceFingerprint:row.fingerprint,status:data.status,topics:copy(volatile.get(row.id)?.topics||data.topics||[]),chapters:[],createdAt:row.created,updatedAt:row.updated,expiresAt:row.expires};
   for(const key of ['sources','officialLinks','searchLinks','outputLicense','error'])if(data[key]!==undefined)output[key]=copy(data[key]);
   for(const chapter of db.prepare("SELECT topic_id,data FROM tour_chapters WHERE tour_id=? AND topic_id<>'plan' ORDER BY rowid").all(row.id)) {
-   const persisted=JSON.parse(chapter.data),memory=volatile.get(row.id)?.chapters?.[chapter.topic_id];
+   const persisted=JSON.parse(chapter.data);delete persisted._failureReserve;const memory=volatile.get(row.id)?.chapters?.[chapter.topic_id];
    output.chapters.push(copy(memory?{...memory,volatile:true}:persisted));
   }
   if(data.storage?.textCache===false||data.storage?.outputCache===false)output.volatile=true;
@@ -108,7 +112,7 @@ export function createTourStore({db,now=Date.now,maxTours=LIMITS.maxTours,maxSto
   return transaction(()=>{
    const job=db.prepare('SELECT c.*,t.data AS tour_data,t.expires FROM tour_chapters c JOIN tours t ON t.id=c.tour_id WHERE c.job_token=? AND c.lease_until>?').get(token,now());
    if(!job)return false;
-   const tour=JSON.parse(job.tour_data);let data;
+   const tour=JSON.parse(job.tour_data),previousChapter=JSON.parse(job.data);delete previousChapter._failureReserve;let data;
    if(job.topic_id==='plan') {
     if(error) {tour.status='failed';tour.error=publicJobError(error);data={status:'failed',error:tour.error};}
     else {
@@ -124,11 +128,11 @@ export function createTourStore({db,now=Date.now,maxTours=LIMITS.maxTours,maxSto
      data={status:'ready'};
     }
    } else {
-    data=error?{...JSON.parse(job.data),status:'failed',error:publicJobError(error)}:{...emptyChapter(job.topic_id),...copy(result),id:JSON.parse(job.data).id||job.topic_id,topicId:job.topic_id};
+    data=error?{...previousChapter,status:'failed',error:publicJobError(error)}:{...emptyChapter(job.topic_id),...copy(result),id:previousChapter.id||job.topic_id,topicId:job.topic_id};
     if(!['ready','failed','insufficient'].includes(data.status))throw tourError('invalid_request',400);
     if(tour.storage?.outputCache===false&&!error) {
      remember(job.tour_id,{chapters:{...volatile.get(job.tour_id)?.chapters,[job.topic_id]:data}});
-     data={...emptyChapter(job.topic_id),volatile:true};
+     data={...emptyChapter(job.topic_id),id:data.id,volatile:true};
     }
    }
    db.prepare('UPDATE tour_chapters SET data=?,lease_until=NULL,job_token=NULL WHERE job_token=? AND lease_until>?').run(JSON.stringify(data),token,now());
@@ -152,8 +156,9 @@ export function createTourStore({db,now=Date.now,maxTours=LIMITS.maxTours,maxSto
     capacity(id);return publicTour(rowFor(ownerId,id));
    });
   },
-  get(ownerId,id) {const row=liveRow(ownerId,id);if(!row)return null;db.prepare('UPDATE tours SET updated=? WHERE id=?').run(now(),id);row.updated=now();return publicTour(row);},
+  get(ownerId,id) {transaction(()=>{recover();capacity();});const row=liveRow(ownerId,id);if(!row)return null;db.prepare('UPDATE tours SET updated=? WHERE id=?').run(now(),id);row.updated=now();return publicTour(row);},
   findActive(ownerId,placeId,language) {
+   transaction(()=>{recover();capacity();});
    const rows=db.prepare('SELECT * FROM tours WHERE owner_id=? AND place_id=? AND language=? AND expires>? ORDER BY updated DESC').all(ownerId,placeId,language,now());
    const row=rows.find(r=>['planning','ready'].includes(JSON.parse(r.data).status));return row?this.get(ownerId,row.id):null;
   },
@@ -169,6 +174,9 @@ export function createTourStore({db,now=Date.now,maxTours=LIMITS.maxTours,maxSto
     if(memory)remember(tourId,{chapters:{...volatile.get(tourId)?.chapters,[topicId]:undefined}});
     if(topicId==='plan'&&JSON.parse(tour.data).status!=='planning')return null;
     const token=randomUUID();data.status='generating';data.error=null;
+    // Reserve real JSON bytes before accepting work. Even plan failure writes
+    // two safe error copies (tour + sentinel); both fit in this reservation.
+    data._failureReserve=' '.repeat(1024);
     db.prepare('UPDATE tour_chapters SET data=?,lease_until=?,job_token=? WHERE tour_id=? AND topic_id=?').run(JSON.stringify(data),now()+LIMITS.leaseMs,token,tourId,topicId);
     db.prepare('UPDATE tours SET updated=? WHERE id=?').run(now(),tourId);capacity(tourId);return token;
    });

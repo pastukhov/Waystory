@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {createTourStore} from '../server/tours/store.mjs';
 import {createTourJobs} from '../server/tours/jobs.mjs';
-function setup(t){let time=1000;const db=new DatabaseSync(':memory:');t.after(()=>db.close());const store=createTourStore({db,now:()=>time});const jobs=createTourJobs({store,now:()=>time});t.after(()=>jobs.shutdown());const create=owner=>store.create(owner,{placeId:'wiki:ru:1',language:'ru',status:'ready',chapters:[{id:'overview',topicId:'overview',status:'planned',text:null},{id:'park',topicId:'park',status:'planned',text:null}]});return {db,store,jobs,create,tick:ms=>time+=ms};}
+function setup(t){let time=1000;const db=new DatabaseSync(':memory:');const store=createTourStore({db,now:()=>time});const jobs=createTourJobs({store,now:()=>time});t.after(()=>{jobs.shutdown();db.close();});const create=owner=>store.create(owner,{placeId:'wiki:ru:1',language:'ru',status:'ready',chapters:[{id:'overview',topicId:'overview',status:'planned',text:null},{id:'park',topicId:'park',status:'planned',text:null}]});return {db,store,jobs,create,tick:ms=>time+=ms};}
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 
 test('two simultaneous chapter requests run once and preserve completed work',async t=>{
@@ -48,11 +48,37 @@ test('shutdown aborts accepted jobs, rejects new work and ignores a late result'
  gate.resolve();await jobs.drain();assert.equal(store.get('A',a.id).chapters[0].status,'failed');assert.equal(store.get('A',a.id).chapters[0].text,null);
 });
 
-test('explicit retry uses a new claim and no disconnect listener cancels accepted work',async t=>{
+test('explicit retry uses a new claim after a retryable failure',async t=>{
  const {jobs,create,store}=setup(t);const a=create('A');let calls=0;
  const run=async()=>{calls++;if(calls===1)throw Object.assign(Error('temporary'),{code:'provider_timeout',retryable:true});return {status:'ready',text:'Recovered'};};
  jobs.start({ownerId:'A',tourId:a.id,topicId:'overview',run});await jobs.drain();
  assert.equal(jobs.start({ownerId:'A',tourId:a.id,topicId:'overview',run}).accepted,false);
  assert.equal(jobs.start({ownerId:'A',tourId:a.id,topicId:'overview',retry:true,run}).accepted,true);await jobs.drain();
  assert.equal(store.get('A',a.id).chapters[0].text,'Recovered');assert.equal(calls,2);
+});
+
+
+test('deadline releases a hung job slot and fences its later completion from a retry',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const {jobs,create,store,tick}=setup(t);const a=create('A');const stale=deferred();
+ jobs.start({ownerId:'A',tourId:a.id,topicId:'overview',run:()=>stale.promise});
+ await Promise.resolve();tick(90000);t.mock.timers.tick(90000);
+ await new Promise(setImmediate);
+ assert.equal(jobs.activeCount,0);assert.equal(store.get('A',a.id).chapters[0].error.code,'provider_timeout');
+ const fresh=deferred();jobs.start({ownerId:'A',tourId:a.id,topicId:'overview',retry:true,run:()=>fresh.promise});
+ await Promise.resolve();stale.resolve({status:'ready',text:'Stale'});await new Promise(setImmediate);
+ assert.equal(jobs.activeCount,1);assert.equal(store.get('A',a.id).chapters[0].status,'generating');
+ fresh.resolve({status:'ready',text:'Fresh'});await jobs.drain();
+ assert.equal(store.get('A',a.id).chapters[0].text,'Fresh');
+});
+
+test('a full store refuses a job before run and never arms its timer',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const db=new DatabaseSync(':memory:');let now=1000;
+ const store=createTourStore({db,now:()=>now,maxStorageBytes:500});const jobs=createTourJobs({store,now:()=>now});
+ t.after(()=>{jobs.shutdown();db.close();});
+ const a=store.create('A',{placeId:'wiki:ru:1',language:'ru',status:'ready',chapters:[{id:'overview',topicId:'overview',status:'planned'}]});
+ let calls=0;assert.throws(()=>jobs.start({ownerId:'A',tourId:a.id,topicId:'overview',run:()=>{calls++;return new Promise(()=>{});}}),{status:429});
+ now+=90000;assert.doesNotThrow(()=>t.mock.timers.tick(90000));await jobs.drain();assert.equal(calls,0);
+ assert.equal(store.get('A',a.id).chapters[0].status,'planned');
 });

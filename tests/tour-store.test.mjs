@@ -152,3 +152,50 @@ test('logical storage cap counts UTF8 bytes and volatile snapshots and rolls bac
  assert.throws(()=>store.create('B',input({snapshot:{documents:[{...doc('tour-large-volatile'),text:'X'.repeat(3000)}]}})),{status:429});
  assert.equal(db.prepare('SELECT COUNT(*) n FROM tours').get().n,1);
 });
+
+test('polling recovers a lease that expires after startup, without starting work',t=>{
+ const {store,db,tick}=setup(t);const a=store.create('A',input());store.claimJob('A',a.id,'overview');
+ let restartTime=1001;const restarted=createTourStore({db,now:()=>restartTime});
+ assert.equal(restarted.get('A',a.id).chapters[0].status,'generating');restartTime=121001;tick(120001);
+ const current=restarted.get('A',a.id);assert.equal(current.chapters[0].status,'failed');assert.equal(current.chapters[0].error.code,'provider_timeout');
+ assert.equal(db.prepare('SELECT job_token FROM tour_chapters WHERE tour_id=?').get(a.id).job_token,null);
+});
+
+test('claim reserves terminal error capacity before accepting work and failure stays within cap',t=>{
+ const {store}=setup(t,{maxStorageBytes:500});const a=store.create('A',input());
+ assert.throws(()=>store.claimJob('A',a.id,'overview'),{status:429});
+ assert.equal(store.get('A',a.id).chapters[0].status,'planned');assert.ok(store.stats().bytes<=500);
+ const second=setup(t,{maxStorageBytes:3000});const b=second.store.create('B',input({chapters:[chapter(),{...chapter('park'),status:'ready',text:'Saved park'}]}));
+ const token=second.store.claimJob('B',b.id,'overview');assert.ok(token);
+ assert.equal(second.store.failJob(token,{code:'provider_timeout'}),true);
+ assert.equal(second.store.get('B',b.id).chapters[0].status,'failed');assert.equal(second.store.get('B',b.id).chapters[1].text,'Saved park');
+ assert.ok(second.store.stats().bytes<=3000);
+});
+
+test('volatile chapter IDs survive placeholders, progress saves and restart',t=>{
+ registerSourcePolicy('tour-volatile-id',{allowModelInput:true,allowTextCache:false,ttlMs:604800000});
+ const {store,db}=setup(t);const a=store.create('A',input({snapshot:{documents:[doc('tour-volatile-id')]},chapters:[{...chapter(),id:'chapter-123',status:'ready',text:'Done'}]}));
+ assert.equal(a.chapters[0].id,'chapter-123');
+ const progress={chapterId:'chapter-123',chunkIndex:0,offsetSeconds:0,completedChapterIds:[]};
+ assert.deepEqual(store.saveProgress('A',a.id,progress),progress);
+ const restarted=createTourStore({db,now:()=>1000});assert.equal(restarted.get('A',a.id).chapters[0].id,'chapter-123');
+ const token=restarted.claimJob('A',a.id,'overview');restarted.completeJob(token,{status:'ready',text:'Again'});
+ assert.equal(restarted.get('A',a.id).chapters[0].id,'chapter-123');
+});
+
+test('explicit zero source TTL refuses a retained snapshot rather than granting seven days',t=>{
+ registerSourcePolicy('tour-zero-ttl',{allowModelInput:true,allowTextCache:false,ttlMs:0});
+ const {store,db}=setup(t);
+ assert.throws(()=>store.create('A',input({snapshot:{documents:[doc('tour-zero-ttl')]}})),{code:'source_unavailable'});
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM tours').get().n,0);
+});
+
+test('plan failure fits reserved capacity for both error copies without evicting ready work',t=>{
+ const {store,db}=setup(t);const ready=store.create('B',input({chapters:[{...chapter(),status:'ready',text:'Saved overview'}]}));
+ const plan=store.create('A',input({status:'planning',chapters:[]}));const token=store.claimJob('A',plan.id,'plan');
+ const exactCap=store.stats().bytes;const limited=createTourStore({db,now:()=>1000,maxStorageBytes:exactCap});
+ assert.equal(limited.failJob(token,{code:'source_unavailable',retryable:true}),true);
+ assert.equal(limited.get('A',plan.id).status,'failed');assert.equal(limited.get('A',plan.id).error.code,'source_unavailable');
+ assert.equal(limited.get('B',ready.id).chapters[0].text,'Saved overview');assert.ok(limited.stats().bytes<=exactCap);
+ assert.equal(limited.get('B',ready.id).chapters[0]._failureReserve,undefined);
+});
