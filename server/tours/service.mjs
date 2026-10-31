@@ -95,7 +95,7 @@ export function createTours({store,jobs,research,complete,review,resolvePlace,co
     const snapshot=await getSnapshot(ownerId,tour,place,signal),spans=buildEvidenceSpans(snapshot.documents);
     const selectedTopic=topicId==='overview'?{...topic,evidenceIds:spans.map(s=>s.id)}:topic;let calls=0;
     const consumeCall=async()=>{signal.throwIfAborted();if(now()>=deadline)throw tourError('provider_timeout');if(calls>=LIMITS.maxChapterCalls)throw tourError('budget_exhausted',429);calls++;await quota(ownerId);signal.throwIfAborted();if(now()>=deadline)throw tourError('provider_timeout');};
-    return tourStage('generate',{tourId:id,chapterId:topicId},()=>generateChapter({place,language:tour.language,topic:selectedTopic,spans,previousChapters:store.get(ownerId,id).chapters.filter(c=>c.topicId!==topicId)},{signal,deadline,now,complete:async request=>{await consumeCall();return complete(request)},review:(value,evidence,options)=>tourStage('review',{tourId:id,chapterId:topicId},()=>review(value,evidence,{...options,consumeCall}),{now})}),{now});
+    return tourStage('generate',{tourId:id,chapterId:topicId},()=>generateChapter({place,language:tour.language,topic:selectedTopic,spans,previousChapters:store.get(ownerId,id).chapters.filter(c=>c.topicId!==topicId)},{signal,deadline,now,onDetails:detail=>observe('tour_generation_detail',{tourId:id,chapterId:topicId,stage:'generate',outcome:'rejected',...detail}),complete:async request=>{await consumeCall();return complete(request)},review:(value,evidence,options)=>tourStage('review',{tourId:id,chapterId:topicId},()=>review(value,evidence,{...options,consumeCall}),{now})}),{now});
    }});
    return {status:202,accepted:result.accepted,chapter:store.get(ownerId,id).chapters.find(c=>c.topicId===topicId)};
   },
