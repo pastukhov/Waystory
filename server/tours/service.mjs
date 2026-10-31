@@ -25,13 +25,14 @@ export function createTourModel({env=process.env,fetchFn=fetch}={}){
   async complete({messages,schema,maxTokens,signal}){
    if(!config.enabled)throw tourError('provider_error',503);
    signal?.throwIfAborted();
-   let response;try{response=await fetchFn(config.endpoint,{method:'POST',redirect:'error',headers:config.headers,signal,body:JSON.stringify({model:config.models.story,temperature:0.3,stream:false,max_tokens:maxTokens,messages,response_format:{type:'json_schema',json_schema:{...schema,strict:true}}})})}catch(error){throw upstreamError(error)}
-   if(!response.ok)throw upstreamError({status:response.status});
-   try{
-    const result=await response.json();observe('usage',{operation:'story',usage:result.usage});
-    if(result.choices?.[0]?.finish_reason!=='stop')throw tourError('provider_error',502);
-    return JSON.parse(result.choices[0].message.content);
-   }catch(error){throw upstreamError(error)}
+   const detail=(reason,result,status)=>observe('tour_model_detail',{schema:schema?.name,reason,status,finishReason:result?.choices?.[0]?.finish_reason,tokenCounts:{prompt:result?.usage?.prompt_tokens,completion:result?.usage?.completion_tokens,total:result?.usage?.total_tokens}});
+   let response;try{response=await fetchFn(config.endpoint,{method:'POST',redirect:'error',headers:config.headers,signal,body:JSON.stringify({model:config.models.story,temperature:0.3,stream:false,max_tokens:maxTokens,messages,response_format:{type:'json_schema',json_schema:{...schema,strict:true}}})})}catch(error){detail('provider_error');throw upstreamError(error)}
+   if(!response.ok){detail('provider_error',null,response.status);throw upstreamError({status:response.status});}
+   let result;try{result=await response.json()}catch(error){detail('invalid_json');throw upstreamError(error)}
+   observe('usage',{operation:'story',usage:result?.usage});
+   if(result?.choices?.[0]?.finish_reason!=='stop'){detail('incomplete_response',result);throw tourError('provider_error',502);}
+   let parsed;try{parsed=JSON.parse(result.choices[0].message.content)}catch(error){detail('invalid_json',result);throw upstreamError(error)}
+   detail('success',result);return parsed;
   },
   review:(chapter,spans,options)=>reviewChapter(chapter,spans,{fetchFn,headers:config.headers,model:config.reviewModel||config.models.story,endpoint:config.endpoint,...options})
  };
