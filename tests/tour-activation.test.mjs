@@ -55,7 +55,7 @@ test('selection waits for slow refreshed capabilities before choosing its narrat
 test('HTML and mutable JavaScript require revalidation on reload',async t=>{
  const f=await setup(t);await f.ctx.configReady;
  for(const path of ['/','/app.mjs','/tours-client.mjs']){
-  const response=await fetch(f.base+path);assert.equal(response.status,200);assert.match(response.headers.get('cache-control')||'',/no-cache|no-store/);
+  const response=await fetch(f.base+path);assert.equal(response.status,200);assert.match(response.headers.get('cache-control')||'',/no-cache|no-store/);if(path==='/')assert.match(await response.text(),/src="\/app\.mjs\?v=[^"\s]+"/);
  }
 });
 
