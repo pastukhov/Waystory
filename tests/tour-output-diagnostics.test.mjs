@@ -20,6 +20,17 @@ test('generation output diagnostics correlate attempts and redact all prose and 
 });
 test('two invalid own-claim copies remain rejected and emit attempt reasons before review',async()=>{
  const details=[];let calls=0;
- const result=await generator.generateChapter({place:{id:'wiki:ru:1'},language:'ru',topic,spans:[span]},{complete:async()=>{calls++;return {...chapter(),claims:[{text:'Другая фраза.',evidenceIds:[span.id]}]}},review:()=>assert.fail('invalid output must not reach review'),onDetails:value=>details.push(value)});
+ const result=await generator.generateChapter({place:{id:'wiki:ru:1'},language:'ru',topic,spans:[span]},{complete:async()=>{calls++;return {...chapter(),evidenceIds:['e1'],claims:[{text:'Другая фраза.',evidenceIds:['e1']}]}},review:()=>assert.fail('invalid output must not reach review'),onDetails:value=>details.push(value)});
  assert.equal(result.status,'failed');assert.equal(result.error.code,'verification_failed');assert.equal(calls,2);assert.deepEqual(details,[{reason:'claim_not_verbatim',attempt:1},{reason:'claim_not_verbatim',attempt:2}]);
+});
+
+test('invalid local references report only allowlisted evidence subtypes',async()=>{
+ const base={...chapter(),evidenceIds:['e1'],claims:[{text,evidenceIds:['e1']}]};
+ for(const [value,evidenceIssue] of [[{...base,evidenceIds:['unknown']},'top_unknown'],[{...base,evidenceIds:['e1','e1']},'top_duplicate'],[{...base,claims:[{text,evidenceIds:['unknown']}]},'claim_unknown'],[{...base,claims:[{text,evidenceIds:['e1','e1']}]},'claim_duplicate']]){
+  const details=[];await generator.generateChapter({place:{id:'wiki:ru:1'},language:'ru',topic,spans:[span]},{complete:async()=>value,review:()=>assert.fail(),onDetails:value=>details.push(value)});
+  assert.deepEqual(details,[{reason:'invalid_evidence',attempt:1,evidenceIssue},{reason:'invalid_evidence',attempt:2,evidenceIssue}]);
+ }
+ const entry={event:'waystory_tour_generation_detail',requestId:'459fdcd9-e879-4ea2-9a17-65116befea37',stage:'generate',outcome:'rejected',reason:'invalid_evidence',evidenceIssue:'claim_unknown'};
+ assert.equal(safeTelemetryEntry(entry).evidenceIssue,'claim_unknown');
+ assert.ok(!('evidenceIssue' in safeTelemetryEntry({...entry,evidenceIssue:'PRIVATE'})));
 });
