@@ -60,3 +60,8 @@ test('provider errors and transport failures never trigger repair or leak respon
 test('invalid issue indexes or unallowlisted reasons cannot become semantic rejection',async()=>{
  for(const issue of [{claimIndex:3,reason:'contradiction'},{claimIndex:0,reason:'secret model text'}])assert.deepEqual(await facts.reviewChapter(chapter,evidence,opts(async()=>response({supported:false,issues:[issue]}))),{outcome:'error',issues:[{claimIndex:null,reason:'invalid_schema'}]});
 });
+test('chapter review checks semantic repetition against previous verified claims',async()=>{
+ const input={...chapter,previousClaims:[{text:'Previously verified palace fact.',evidenceIds:['a']}]};
+ const result=await facts.reviewChapter(input,evidence,opts(async(_,o)=>{const body=JSON.parse(o.body);assert.match(body.messages[0].content,/semantic repetition/i);assert.deepEqual(JSON.parse(body.messages[1].content).chapter.previousClaims,input.previousClaims);return response({supported:false,issues:[{claimIndex:0,reason:'duplicate_claim'}]})}));
+ assert.equal(result.outcome,'rejected');assert.equal(result.issues[0].reason,'duplicate_claim');
+});

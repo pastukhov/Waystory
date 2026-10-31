@@ -4,6 +4,11 @@ import {once} from 'node:events';
 import {createApp} from '../server/index.mjs';
 import {createObservability} from '../server/observability.mjs';
 import {observe} from '../server/request-context.mjs';
+test('chapter grounding provider calls are classified as review without raw content',async()=>{
+ const lines=[],obs=createObservability({env:{},write:line=>lines.push(line)});
+ await obs.run(()=>obs.wrapFetch(async()=>Response.json({}))('https://routerai.ru/api/v1/chat/completions',{method:'POST',body:JSON.stringify({messages:[{content:'PRIVATE_CHAPTER'}],response_format:{json_schema:{name:'chapter_grounding'}}})}));
+ assert.match(obs.render(),/provider="routerai_ai",operation="review",status="200"/);assert.ok(!JSON.stringify(lines).includes('PRIVATE_CHAPTER'));
+});
 const token='test-metrics-token-0123456789abcdef';
 async function app(t,env={}){
  const logs=[];const server=createApp({env:{MULTISOURCE_ENABLED:'false',...env},logWriter:line=>logs.push(line),auth:{enabled:false,session:()=>null}});

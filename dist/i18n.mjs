@@ -1,4 +1,5 @@
 import {LANGUAGE} from './language.mjs';
+import {estimatedSeconds} from './duration.mjs';
 
 // Explicit UI catalog: Russian source keys, English equivalents.
 export const messages={
@@ -342,7 +343,7 @@ export function localizeDocument(doc=document){
 export function durationLabel(blocks,depth,language=LANGUAGE){
   const words=blocks.filter(b=>b.depth<=depth).reduce((n,b)=>n+b.text.trim().split(/\s+/).filter(Boolean).length,0);
   if(!words)return '';
-  const seconds=Math.max(1,Math.round(words/140*60));
+  const seconds=estimatedSeconds(blocks.filter(b=>b.depth<=depth).map(b=>b.text).join(' '));
   return seconds<60?`≈ ${seconds} ${language==='ru'?'сек':'sec'}`:`≈ ${Math.floor(seconds/60)} ${language==='ru'?'мин':'min'}${seconds%60?' '+seconds%60+' '+(language==='ru'?'сек':'sec'):''}`;
 }
 export function availableDepths(blocks){return [0,1,2].filter(depth=>blocks.some(b=>b.depth===depth))}

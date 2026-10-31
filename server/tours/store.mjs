@@ -146,7 +146,7 @@ export function createTourStore({db,now=Date.now,maxTours=LIMITS.maxTours,maxSto
    if(!ownerId||!input?.placeId||!['ru','en'].includes(input.language))throw tourError('invalid_request',400);
    return transaction(()=>{
     cleanupRows();const id=randomUUID(),created=now();
-    const data={status:input.status||'planning',topics:copy(input.topics||[]),storage:{textCache:true,outputCache:true}};
+    const data={status:input.status||'planning',topics:copy(input.topics||[]),storage:{textCache:true,outputCache:true},_invalidationReserve:0};
     for(const key of ['sources','officialLinks','searchLinks','outputLicense'])if(input[key]!==undefined)data[key]=copy(input[key]);
     const snapshot=input.snapshot===undefined?null:prepareSnapshot(id,input.snapshot,data);
     if(data.storage.outputCache===false) {remember(id,{topics:data.topics});data.topics=data.topics.map(topic=>({...topic,title:'',summary:'',volatile:true}));}
@@ -157,6 +157,15 @@ export function createTourStore({db,now=Date.now,maxTours=LIMITS.maxTours,maxSto
    });
   },
   get(ownerId,id) {transaction(()=>{recover();capacity();});const row=liveRow(ownerId,id);if(!row)return null;db.prepare('UPDATE tours SET updated=? WHERE id=?').run(now(),id);row.updated=now();return publicTour(row);},
+  invalidate(ownerId,id) {
+   // Keep readable ready chapters, but do not reuse an unusable source plan.
+   // The private reserve covers the extra byte in ready -> failed at the cap.
+   return transaction(()=>{const row=liveRow(ownerId,id);if(!row)return false;const data=JSON.parse(row.data);data.status='failed';delete data.error;delete data._invalidationReserve;db.prepare('UPDATE tours SET data=?,updated=? WHERE id=?').run(JSON.stringify(data),now(),id);capacity(id);return true;});
+  },
+  discardUnclaimed(ownerId,id) {
+   // Only a new plan rejected before reservation can be removed this way.
+   return transaction(()=>{const row=liveRow(ownerId,id);if(!row||JSON.parse(row.data).status!=='planning'||active(id))return false;remove(id);return true;});
+  },
   findActive(ownerId,placeId,language) {
    transaction(()=>{recover();capacity();});
    const rows=db.prepare('SELECT * FROM tours WHERE owner_id=? AND place_id=? AND language=? AND expires>? ORDER BY updated DESC').all(ownerId,placeId,language,now());

@@ -55,7 +55,7 @@ function providerCall(url,options){
   if(host==='routerai.ru'&&u.pathname==='/api/v1/audio/speech')return ['routerai_tts','speech'];
   if(host==='ai.api.cloud.yandex.net'||host==='routerai.ru'){
    let schema;try{schema=JSON.parse(options?.body||'{}').response_format?.json_schema?.name}catch{}
-   return [host==='routerai.ru'?'routerai_ai':'yandex_ai',schema==='grounding'?'review':pick(schema?.replace(/^waystory_/,''),operations)];
+   return [host==='routerai.ru'?'routerai_ai':'yandex_ai',['grounding','chapter_grounding'].includes(schema)?'review':schema?.startsWith('tour_')?'story':pick(schema?.replace(/^waystory_/,''),operations)];
   }
   return ['osm','api']; // This wrapper is supplied only to the allowlisted source transport.
  }catch{return ['osm','api']}
