@@ -17,7 +17,7 @@
 - Для тестов — фикстуры и внедрение fetchFn/now. Платные проверки только отдельным Operations probe после деплоя.
 - Не менять существующий STORY_VERSION глобально ради нового формата: у tours собственный version=1.
 - Никакого кэша аудио на диске сервера в v1. Готовые главы и снимки источников — только в ограниченном SQLite-хранилище.
-- Оставлять feature flag выключенным до приёмки. При неоднозначности придерживаться контрактов ниже; материальные изменения записывать в этот план.
+- Сайт используется только владельцем после входа. Готовые возможности доступны сразу после проверок и выкладки, без отдельного флага или этапа включения. Материальные изменения записывать в план.
 
 ## Что установлено, а что нет
 
@@ -57,7 +57,7 @@ id = SHA256(sourceId + revision + SHA256(document.text) + start + end), hex.
 
 ### Лимиты v1 — реализовать константами в server/tours/config.mjs
 
-- Флаг `TOURS_ENABLED=false`; значения true/false, неверное значение — startup error.
+- Отдельный флаг tours не вводить. Существующая авторизация и доступность AI/store определяют возможность работы.
 - 1 обзор, до 6 тематических глав; у темы 1–3 предложения summary, максимум 300 символов.
 - Обзор 120–220 слов, глава ориентировочно 250–600 слов; текст максимум 6000 символов. Это ориентир, а не причина отвергать короткий подтверждённый текст.
 - План: 2500 output tokens; глава: 4500; review: 3000. Всегда проверять finish_reason.
@@ -150,14 +150,14 @@ Interfaces:
 
 ## Task 6 / PR6 — HTTP, конфигурация и контракт клиента
 
-Create `server/tours/routes.mjs`, `dist/tours-client.mjs`; modify `server/index.mjs`, `scripts/sync-deploy-settings.py`, `compose.production.yaml`, `.env.example`, `.github/workflows/deploy.yml`; tests `tests/tours-http.test.mjs`, `tests/tours-client.test.mjs`.
+Create `server/tours/routes.mjs`, `dist/tours-client.mjs`; modify `server/index.mjs`; tests `tests/tours-http.test.mjs`, `tests/tours-client.test.mjs`.
 Interfaces: `handleTourRoute(req,res,{auth,tours,settings,readJson,json}):Promise<boolean>`; browser `createToursClient({fetchFn,pollMs:2000})` → `start`, `get`, `prepareChapter`, `retryChapter`, `saveProgress`, `waitFor(id,predicate,{signal})`.
 - [ ] Реализовать endpoints из контракта. Все методы кроме перечисленных → 405. JSON size limit переиспользовать из server/index.mjs. Валидация placeId/id/language до job reservation.
-- [ ] /api/config отдаёт tours:true только при flag=true, действующей session, включённом AI и доступном store. При flag=false /api/tours/* → 404; UI legacy не меняется.
+- [ ] /api/config отдаёт tours:true при действующей session, настроенном AI и доступном store. Это признак доступности API, а не переключатель выпуска. Без session API возвращает 401, без необходимых сервисов — 503.
 - [ ] Auth errors сохраняют HTTP status и PublicError в клиенте; error message от неизвестного backend не показывать как HTML. GET no-store; polling не расходует auth.consume.
-- [ ] Прокинуть TOURS_ENABLED через существующую поставку настроек (GitHub variable, не секрет), default false, явно сохранить unset=false. В `.env.example` документировать. Не менять рабочие credentials.
-- [ ] Тесты 401, wrong Origin403, чужой tour404, malformed400, cache hit200, accepted202, duplicate202 без новой job, retry terminal409, квоты429, stale polling cancellation, flag off404.
-- [ ] npm test; npm run check; commit/CI/Deploy с выключенным флагом.
+- [ ] Не добавлять настроек включения в GitHub, env или compose. Существующие credentials и способ авторизации сохранить.
+- [ ] Тесты 401, wrong Origin403, чужой tour404, malformed400, cache hit200, accepted202, duplicate202 без новой job, retry terminal409, квоты429, stale polling cancellation, недоступный сервис503.
+- [ ] npm test; npm run check; commit/CI/Deploy; проверить доступность нового API после входа.
 
 ## Task 7 / PR7 — Экран экскурсии, непрерывная озвучка и прогресс
 
@@ -172,7 +172,7 @@ Interfaces: `renderTour(container,tour,{onOverview,onTopic,onContinue,onRetry})`
 - [ ] Завершение главы отмечать только после onComplete последнего фрагмента. Ошибка prefetch не перепрыгивает главу. Ручной выбор темы отменяет устаревший polling; поздний response не меняет выбранную тему.
 - [ ] Не объявлять chapter completed при закрытии вкладки или ошибке. 401 показывает вход; после входа пользователь сам нажимает продолжить.
 - [ ] RU/EN Playwright: ready→playing→next; failed retry; выбор темы во время загрузки; login expiration; reload resume; нет headings у исходной статьи. Unit: blob cleanup, bounded prefetch, no auto work when continuous=false, changed textHash resets cursor.
-- [ ] npm test; npm run check; node scripts/ci-tours-smoke.cjs (Playwright из CI setup); commit/CI/Deploy, флаг пока false.
+- [ ] npm test; npm run check; node scripts/ci-tours-smoke.cjs (Playwright из CI setup); commit/CI/Deploy; новый интерфейс сразу доступен владельцу.
 
 ## Task 8 / PR8 — Наблюдаемость и реальные пробы
 
@@ -186,15 +186,15 @@ Modify `server/observability.mjs`, `server/diagnostics.mjs`, `scripts/ops-probe.
 - [ ] Существующие реальные probes не получают произвольный URL/model/prompt из inputs. Operations choice, validator и tests обновить совместно.
 - [ ] npm test; monitoring smoke; PR/CI/Deploy; запустить один kuskovo-tour-test, проанализировать результат. Если fail — исправить конкретный слой, не повышать лимиты и не отключать проверку.
 
-## Task 9 — Включение и приёмка
+## Task 9 — Проверка работающей экскурсии
 
-- [ ] Убедиться, что main CI и Deploy успешны для точного SHA. Запустить Operations diagnose. Проверить место на диске и размер source DB через существующую диагностику; при <2 GiB свободного места не включать tours.
-- [ ] До включения выполнить probe задачи 8. Зафиксировать run URL, revision, точные pass/fail, число источников/глав и стоимость из usage (если цены неизвестны — токены/вызовы, не придумывать рубли).
-- [ ] Включить TOURS_ENABLED=true через существующий GitHub settings/deploy путь; если интеграция не позволяет менять variable, дать пользователю точное имя/значение, не просить API key. Повторно проверить /api/config для авторизованной сессии.
+- [ ] Убедиться, что main CI и Deploy успешны для точного SHA. Запустить Operations diagnose. Проверить место на диске и размер source DB через существующую диагностику; при нехватке места разобраться с её причиной, а не добавлять переключатель функции.
+- [ ] Выполнить probe задачи 8 на выложенной версии. Зафиксировать run URL, revision, точные pass/fail, число источников/глав и стоимость из usage (если цены неизвестны — токены/вызовы, не придумывать рубли).
+- [ ] Проверить /api/config и экскурсию в авторизованной сессии. Отдельных ручных действий для включения от владельца не требуется.
 - [ ] Ручная приёмка Chrome Android: открыть Кусково → обзор → продолжить → выбрать другую тему → pause → reload → resume; отдельная проверка истёкшей сессии. Не объявлять проверку на устройстве успешной по одному Playwright.
 - [ ] Цели: обзор + минимум 3 уникальные проверенные темы; глава не повторяет предыдущую; нет разрывов исходных абзацев; права/атрибуция доступны. Первый звук после готового текста ориентир p95<8s, gap при готовом prefetch<1s; это измеряемые цели, а не гарантии провайдера.
 - [ ] Прогнать бедный объект: обзор/insufficient без искусственных глав; другой язык: правильный язык рассказа; подмена названия: источник другого объекта отклоняется.
-- [ ] Откат: TOURS_ENABLED=false сохраняет таблицы/готовые главы и возвращает legacy UI. Никакого удаления пользовательских данных. Документировать в docs/operations.md.
+- [ ] При критической регрессии использовать существующий rollback на предыдущую рабочую версию приложения. Миграции additive, таблицы и готовые главы не удалять. Документировать в docs/operations.md.
 
 ## Порядок работы Sol и отчётность
 
@@ -207,4 +207,4 @@ Modify `server/observability.mjs`, `server/diagnostics.mjs`, `scripts/ops-probe.
 
 ## Передача Sol — вставить как стартовое сообщение
 
-> Реализуй план docs/superpowers/plans/2026-10-31-progressive-tours.md. Сначала прочитай связанный spec и AGENTS.md. Начни с Task 1, выполняй по одному PR, не пропускай диагностику и проверки. Не включай tours до Task 9 и успешной реальной пробы Кусково. Автомерж разрешён; подтверждение на каждое слияние не требуется. Не меняй поставщиков, тарифы и бюджеты, не ослабляй проверку фактов. Сохраняй прогресс в чекбоксах плана и сообщай фактический статус деплоя.
+> Реализуй план docs/superpowers/plans/2026-10-31-progressive-tours.md. Сначала прочитай связанный spec и AGENTS.md. Начни с Task 1, выполняй по одному PR, не пропускай диагностику и проверки. Сайт частный, только для владельца после входа: не добавляй feature flag или ручной этап включения. После выкладки проверь реальную экскурсию по Кусково. Автомерж разрешён; подтверждение на каждое слияние не требуется. Не меняй поставщиков, тарифы и бюджеты, не ослабляй проверку фактов. Сохраняй прогресс в чекбоксах плана и сообщай фактический статус деплоя.
