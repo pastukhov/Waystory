@@ -47,3 +47,18 @@ test('stopping aborts lookahead and ignores a late prefetched response',async()=
  let finish,signal;let calls=0;const {n,audio,heard}=setup(async(url,o)=>{if(++calls===1)return new Response('audio');signal=o.signal;return new Promise(r=>finish=r)});
  n.play([{id:'a',text:'First'},{id:'b',text:'Second'}]);await tick();assert.equal(calls,2);const ended=audio.onended;n.stop();assert.equal(signal.aborted,true);finish(new Response('audio'));await tick();ended();assert.equal(n.state,'idle');assert.deepEqual(heard,[]);
 });
+test('401 calls auth handler after the playing fragment ends and can retry unfinished parts',async()=>{
+ let calls=0,auth=0;const bodies=[];const {n,audio,heard,errors}=setup(async(url,o)=>{bodies.push(JSON.parse(o.body).text);return ++calls===2?Response.json({error:'secret backend detail'},{status:401}):new Response('audio')});const d=device(n);n.onAuthRequired=()=>auth++;
+ const blocks=[{id:'a',text:'word '.repeat(250)}];n.play(blocks);await tick();assert.equal(auth,0);assert.equal(n.state,'playing');audio.onended();await tick();assert.equal(auth,1);assert.deepEqual(heard,[]);assert.equal(d.spoken.length,0);assert.deepEqual(errors,[]);
+ n.play(blocks);await tick();assert.equal(bodies[2],bodies[1]);audio.onended();assert.deepEqual(heard,['a']);n.stop();
+});
+test('first fragment 401 requests auth; stopped late 401 is ignored',async()=>{
+ for(const stopped of [false,true]){let finish,auth=0;const {n,errors}=setup(()=>new Promise(r=>finish=r));const d=device(n);n.onAuthRequired=()=>auth++;n.play([{id:'a',text:'Hello'}]);if(stopped)n.stop();finish(Response.json({error:'denied'},{status:401}));await tick();assert.equal(auth,stopped?0:1);assert.deepEqual(errors,[]);assert.equal(d.spoken.length,0);n.stop()}
+});
+test('auth retry survives completed blocks being removed from the queue',async()=>{
+ let calls=0,auth=0;const texts=[];const {n,audio,heard}=setup(async(url,o)=>{texts.push(JSON.parse(o.body).text);return ++calls===3?Response.json({error:'denied'},{status:401}):new Response('audio')});n.onAuthRequired=()=>auth++;
+ const a={id:'a',text:'First'},b={id:'b',text:'word '.repeat(250)};n.play([a,b]);await tick();audio.onended();await tick();audio.onended();await tick();assert.equal(auth,1);assert.deepEqual(heard,['a']);n.play([b]);await tick();assert.equal(texts[3],texts[2]);audio.onended();assert.deepEqual(heard,['a','b']);n.stop();
+});
+test('changed text after auth resets the unfinished cursor',async()=>{
+ let calls=0;const texts=[];const {n,audio}=setup(async(url,o)=>{texts.push(JSON.parse(o.body).text);return ++calls===2?Response.json({error:'denied'},{status:401}):new Response('audio')});n.onAuthRequired=()=>{};n.play([{id:'a',text:'word '.repeat(250)}]);await tick();audio.onended();await tick();n.play([{id:'a',text:'Changed story.'}]);await tick();assert.equal(texts.at(-1),'Changed story.');n.stop();
+});

@@ -97,7 +97,7 @@ const narrator=new CloudNarrator({
    if(!state.heard.includes(block.id))state.heard.push(block.id);
    if(state.selected){history=saveEntry(history,state.selected);persist('waystory-history',history);renderLibrary()}
    updateProgress();document.querySelectorAll('.story-block').forEach(el=>el.classList.toggle('heard',state.heard.includes(el.dataset.block)));
- },onError:error=>message(speechError(error))
+ },onAuthRequired:()=>{state.user=null;state.ai=false;state.vision=false;message(t('Чтобы продолжить озвучку, войдите снова.'));openDialog('account-dialog');loadAccount()},onError:error=>message(speechError(error))
 });
 narrator.language=LANGUAGE;
 function updateProgress(){const all=state.selected?.blocks?.filter(b=>b.depth<=state.depth)||[];const count=all.filter(b=>state.heard.includes(b.id)).length;$('player-progress').style.width=(all.length?100*count/all.length:0)+'%';$('player-progress-label').textContent=count+t(' из ')+all.length+t(' фрагментов')}

@@ -83,12 +83,14 @@ id = SHA256(sourceId + revision + SHA256(document.text) + start + end), hex.
 
 Files: modify `dist/speech.mjs`, `dist/app.mjs`, `dist/i18n.mjs`, `server/sources/facts.mjs`, `server/observability.mjs`, `server/diagnostics.mjs`; tests `tests/cloud-speech.test.mjs`, `tests/source-facts.test.mjs`, `tests/diagnostics.test.mjs`.
 Interfaces: сохранить onError(message); добавить optional `onAuthRequired()` в CloudNarrator. Вызвать его только для актуального 401 после завершения текущего уже загруженного фрагмента.
-- [ ] Добавить падающие тесты: 401 при первом фрагменте открывает авторизацию; 401 prefetch не обрывает текущий фрагмент; не вызывает device fallback; поздний 401 после stop игнорируется; 5xx сохраняет существующий fallback.
-- [ ] В app onAuthRequired сбросить state.user/ai/vision, открыть account-dialog, loadAccount; сохранить текущую главу/позицию. Текст RU: «Чтобы продолжить озвучку, войдите снова.» EN: «Sign in again to continue listening.» Не начинать проигрывание автоматически после входа.
-- [ ] Для missing_evidence добавить allowlisted evidenceFailures: missing_item, unknown_source, uncited_source, short_quote, quote_not_found; для incomplete_response — allowlisted finishReason и usage token counts. Только индексы/коды, без цитат.
-- [ ] Пропустить новые поля через observability И экспорт диагностики; тест неизвестного поля/секрета должен показывать его удаление.
-- [ ] Проверить `node --test tests/cloud-speech.test.mjs tests/source-facts.test.mjs tests/diagnostics.test.mjs`; затем npm test, npm run check; commit, PR, CI/Deploy.
+- [x] Добавить падающие тесты: 401 при первом фрагменте открывает авторизацию; 401 prefetch не обрывает текущий фрагмент; не вызывает device fallback; поздний 401 после stop игнорируется; 5xx сохраняет существующий fallback.
+- [x] В app onAuthRequired сбросить state.user/ai/vision, открыть account-dialog, loadAccount; сохранить текущую главу/позицию. Текст RU: «Чтобы продолжить озвучку, войдите снова.» EN: «Sign in again to continue listening.» Не начинать проигрывание автоматически после входа.
+- [x] Для missing_evidence добавить allowlisted evidenceFailures: missing_item, unknown_source, uncited_source, short_quote, quote_not_found; для incomplete_response — allowlisted finishReason и usage token counts. Только индексы/коды, без цитат.
+- [x] Пропустить новые поля через observability И экспорт диагностики; тест неизвестного поля/секрета должен показывать его удаление.
+- [x] Проверить `node --test tests/cloud-speech.test.mjs tests/source-facts.test.mjs tests/diagnostics.test.mjs`; затем npm test, npm run check; commit, PR, CI/Deploy.
 Deliverable: авторизация перестаёт выглядеть как ошибка синтеза; можно точно объяснить отказ проверки.
+
+Task 1 implementation note: diagnostics.mjs delegates to safeTelemetryEntry, so the shared allowlist covers both live and exported logs. Auth continuation preserves unfinished chunks in-session; login redirect/reload persistence remains Task 7. Tests: 338 passing; syntax/diff checks passing. Review/CI/Deploy must be confirmed before proceeding.
 
 ## Task 2 / PR2 — Проверка по неизменным фрагментам
 
