@@ -1,7 +1,7 @@
 import {speechTextHash,speechChunkCount,SPEECH_CHUNKING_VERSION} from './speech.mjs';
 
 // A selection owns all pending work. Audio completion, not preparation, advances it.
-export function createTourPlayer({client,narrator,saveProgress=(id,value)=>client.saveProgress(id,value),onChange=()=>{},onAuthRequired=()=>{},onError=()=>{},onBackup=()=>{},now=Date.now}={}){
+export function createTourPlayer({client,narrator,saveProgress=(id,value)=>client.saveProgress(id,value),onChange=()=>{},onAuthRequired=()=>{},onError=()=>{},onBackup=()=>{},onChapterComplete=()=>{},now=Date.now}={}){
  let tour=null,selected=null,cursor=null,continuous=false,epoch=0,controller=null,preview=null,authPending=false,authNotified=false,playing=false,lastSaved=0,disposed=false;
  let completed=new Set(),saveQueue=Promise.resolve();
  const prior={onComplete:narrator.onComplete,onProgress:narrator.onProgress,onState:narrator.onState,onAuthRequired:narrator.onAuthRequired,onError:narrator.onError};
@@ -29,7 +29,7 @@ export function createTourPlayer({client,narrator,saveProgress=(id,value)=>clien
   }catch(error){if(token!==epoch||signal.aborted)return;if(error.status===401)requireAuth();else{onError(error);change()}}
  }
  narrator.onProgress=value=>{if(!playing||value.blockId!==selected?.id){prior.onProgress?.(value);return}cursor={chapterId:selected.id,chunkIndex:value.chunkIndex,offsetSeconds:value.offsetSeconds,textHash:speechTextHash(selected.text),chunkingVersion:SPEECH_CHUNKING_VERSION};onBackup({tourId:tour.id,...cursor});if(now()-lastSaved>=5000)save()};
- narrator.onComplete=block=>{if(!playing||block.id!==selected?.id){prior.onComplete?.(block);return}completed.add(block.id);cursor={...cursor,chunkIndex:0,offsetSeconds:0};save();const token=epoch;playing=false;change();if(authPending){requireAuth();return}if(continuous){const id=nextTopic();if(id)queueMicrotask(()=>{if(token===epoch&&continuous)play(id,{advance:true})})}};
+ narrator.onComplete=block=>{if(!playing||block.id!==selected?.id){prior.onComplete?.(block);return}completed.add(block.id);onChapterComplete({tourId:tour.id,chapterId:block.id});cursor={...cursor,chunkIndex:0,offsetSeconds:0};save();const token=epoch;playing=false;change();if(authPending){requireAuth();return}if(continuous){const id=nextTopic();if(id)queueMicrotask(()=>{if(token===epoch&&continuous)play(id,{advance:true})})}};
  narrator.onState=value=>{prior.onState?.(value);change()};
  narrator.onAuthRequired=()=>{if(playing){save();requireAuth()}else prior.onAuthRequired?.()};
  narrator.onError=error=>{if(playing){save();onError(error)}else prior.onError?.(error)};
@@ -53,6 +53,7 @@ export function createTourPlayer({client,narrator,saveProgress=(id,value)=>clien
   pause(){if(playing)narrator.pause();save();change()},
   resume(){if(playing&&narrator.state==='paused'){narrator.resume();change();return}const id=selected?.topicId||'overview';return play(id,{fromCursor:true})},
   stop(){save();epoch++;controller?.abort();controller=null;preview=null;continuous=false;playing=false;narrator.stop();change()},
+  clear(){api.stop();tour=null;selected=null;cursor=null;completed.clear();change()},
   setContinuous(value){continuous=!!value;if(!continuous)narrator.clearPreparedNext?.();if(!continuous&&preview){epoch++;controller?.abort();controller=new AbortController();preview=null}if(continuous&&playing)prefetch(epoch);change()},
   save,
   getState:snapshot,

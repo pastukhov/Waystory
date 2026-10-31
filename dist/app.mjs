@@ -92,30 +92,32 @@ $('account-logout').onclick=async()=>{
  catch{$('account-status').textContent=t('Не удалось выйти. Повторите попытку.');$('account-logout').disabled=false}
 };
 if(new URL(location.href).searchParams.has('auth_error')){openDialog('account-dialog');$('account-status').textContent=t('Не удалось войти через Google. Повторите вход или проверьте приглашение.');const url=new URL(location.href);url.searchParams.delete('auth_error');window.history.replaceState(null,'',url.pathname+url.search+url.hash)}
+function recordListening(){if(state.selected){history=saveEntry(history,state.selected);persist('waystory-history',history);renderLibrary()}}
 const narrator=new CloudNarrator({
  onState:s=>{document.body.classList.toggle('playing',s==='playing');$('player-pause').textContent=['playing','loading'].includes(s)?'Ⅱ':'▶';$('player-pause').setAttribute('aria-label',['playing','loading'].includes(s)?t('Пауза'):t('Слушать'));$('story-play').textContent=['playing','loading'].includes(s)?t('Ⅱ Пауза'):s==='paused'?t('▶ Продолжить'):t('▶ Слушать рассказ');$('player-state').textContent=s==='loading'?t('Загружаем голос…'):s==='playing'?t('Слушаем · ')+(state.current?.title||t('История')):s==='paused'?t('На паузе'):s==='finished'?t('Рассказ завершён'):t('Готово к прослушиванию')},
  onBlock:block=>{state.current=block;document.querySelectorAll('.story-block').forEach(el=>el.classList.toggle('active',el.dataset.block===block.id))},
  onComplete:block=>{
    if(block.id.startsWith('answer-'))return;
    if(!state.heard.includes(block.id))state.heard.push(block.id);
-   if(state.selected){history=saveEntry(history,state.selected);persist('waystory-history',history);renderLibrary()}
+   recordListening();
    updateProgress();document.querySelectorAll('.story-block').forEach(el=>el.classList.toggle('heard',state.heard.includes(el.dataset.block)));
  },onAuthRequired:()=>{state.user=null;state.ai=false;state.vision=false;message(t('Чтобы продолжить озвучку, войдите снова.'));openDialog('account-dialog');loadAccount()},onError:error=>message(speechError(error))
 });
 narrator.language=LANGUAGE;
 const toursClient=createToursClient();
-let tourMode=false,tourPlayback=false,tourLoading=null;
+let tourMode=false,tourPlayback=false,tourLoading=null,tourFailure=false;
 const cursorKey='waystory-tour-cursor';
 function readTourCursor(){try{const value=JSON.parse(localStorage.getItem(cursorKey));return value&&typeof value.tourId==='string'&&typeof value.chapterId==='string'&&Number.isSafeInteger(value.chunkIndex)&&value.chunkIndex>=0&&Number.isFinite(value.offsetSeconds)&&value.offsetSeconds>=0&&typeof value.textHash==='string'?value:null}catch{return null}}
 function tourAuth(){state.user=null;state.ai=false;state.vision=false;message(t('Чтобы продолжить озвучку, войдите снова.'));openDialog('account-dialog');loadAccount()}
 function tourError(error){if(error?.status===401){tourAuth();return}message(t('Не удалось загрузить экскурсию. Повторите попытку.'))}
 function backupTour(value){try{localStorage.setItem(cursorKey,JSON.stringify({tourId:value.tourId,chapterId:value.chapterId,chunkIndex:value.chunkIndex,offsetSeconds:value.offsetSeconds,textHash:value.textHash,chunkingVersion:value.chunkingVersion}))}catch{/* Progress remains available server-side. */}}
-const tourPlayer=createTourPlayer({client:toursClient,narrator,onBackup:backupTour,onAuthRequired:tourAuth,onError:tourError,onChange:value=>{
+const tourPlayer=createTourPlayer({client:toursClient,narrator,onBackup:backupTour,onAuthRequired:tourAuth,onError:tourError,onChapterComplete:recordListening,onChange:value=>{
  if(!tourMode)return;drawTour(value);
  if(tourPlayback&&value.tour){$('player-progress').style.width=(100*value.completedChapterIds.length/Math.max(1,value.tour.chapters.length))+'%';$('player-progress-label').textContent=value.completedChapterIds.length+' / '+value.tour.chapters.length}
 }});
 function drawTour(value=tourPlayer.getState()){
  if(!tourMode){$('tour-panel').hidden=true;return}
+ if(tourFailure){$('tour-panel').hidden=false;$('tour-panel').replaceChildren();const note=document.createElement('p');note.textContent=t('Не удалось загрузить экскурсию. Повторите попытку.');$('tour-panel').append(note);return}
  const current=tourLoading?null:value.tour;
  const listen=topicId=>{tourPlayback=true;message('');showPlayer();tourPlayer.setContinuous(false);tourPlayer.play(topicId)};
  renderTour($('tour-panel'),current,{...value,onOverview:()=>listen('overview'),onTopic:listen,onRetry:topicId=>{tourPlayback=true;showPlayer();tourPlayer.setContinuous(false);tourPlayer.play(topicId,{retry:true})},onContinue:()=>{
@@ -124,14 +126,14 @@ function drawTour(value=tourPlayer.getState()){
  },onResume:()=>{tourPlayback=true;message('');showPlayer();tourPlayer.resume()},onPause:()=>tourPlayer.pause()});
 }
 async function openTour(place,token,signal){
- tourMode=true;tourLoading=true;drawTour();
+ tourMode=true;tourLoading=true;tourFailure=false;drawTour();
  try{if(!place.placeId){const resolved=await resolvePlace(place,signal,LANGUAGE);if(!placeEpoch.isCurrent(token))return;place.placeId=resolved.placeId}
   const result=await toursClient.start({placeId:place.placeId,language:LANGUAGE},{signal});
   const tour=result.tour||await toursClient.waitFor(result.tourId,value=>value.status!=='planning',{signal});
   if(!placeEpoch.isCurrent(token)||signal.aborted)return;tourLoading=false;tourPlayer.open(tour,readTourCursor());
   Object.assign(place,{sources:tour.sources?.length?tour.sources:place.sources,officialLinks:tour.officialLinks||place.officialLinks,searchLinks:tour.searchLinks||place.searchLinks,materialsLoading:false});renderMaterials($('story-materials'),place,LANGUAGE);
   if(tour.sources?.length){renderSources($('story-sources'),tour.sources,tour.outputLicense);$('story-attribution').hidden=false}
- }catch(error){if(!placeEpoch.isCurrent(token)||signal.aborted)return;tourLoading=false;$('tour-panel').replaceChildren();const note=document.createElement('p');note.textContent=t('Не удалось загрузить экскурсию. Повторите попытку.');$('tour-panel').append(note);tourError(error)}
+ }catch(error){if(!placeEpoch.isCurrent(token)||signal.aborted)return;tourLoading=false;tourFailure=true;drawTour();tourError(error)}
 }
 window.addEventListener('pagehide',()=>tourPlayer.stop());
 async function restoreTour(){
@@ -165,7 +167,7 @@ function renderStory(){
 }
 function renderText(){const p=state.selected;if(!p)return;state.depth=clampDepth(p.blocks,state.depth);const blocks=(p.blocks||[]).filter(b=>b.depth<=state.depth);$('story-text').replaceChildren(...blocks.map(b=>{const el=document.createElement('section');el.className='story-block';el.dataset.block=b.id;el.classList.toggle('heard',state.heard.includes(b.id));el.classList.toggle('active',state.current?.id===b.id);const title=document.createElement('h3');title.textContent=metadata(stripSourceCitations(b.title));const text=document.createElement('p');text.textContent=stripSourceCitations(b.text);if(!b.title)el.classList.add('source-paragraph');el.append(...(b.title?[title,text]:[text]));return el}));$('duration-label').textContent=durationLabel(p.blocks,state.depth);document.querySelectorAll('[data-depth]').forEach(b=>{const depth=+b.dataset.depth;b.disabled=!availableDepths(p.blocks).includes(depth);b.classList.toggle('selected',depth===state.depth);b.setAttribute('aria-pressed',String(depth===state.depth));if(b.closest('.depth-switch'))b.textContent=t(['Коротко','Обычно','Подробно'][depth])+' · '+durationLabel(p.blocks,depth)});updateProgress()}
 async function selectPlace(place){
- tourPlayer.stop();tourMode=false;tourPlayback=false;tourLoading=null;$('tour-panel').hidden=true;
+ tourPlayer.clear();tourMode=false;tourPlayback=false;tourLoading=null;tourFailure=false;$('tour-panel').hidden=true;
  const token=placeEpoch.next();answerEpoch.next();answerController?.abort();placeController?.abort();placeController=new AbortController();const signal=placeController.signal;narrator.stop();state.selected=null;state.heard=[];state.current=null;state.answer=false;
  await configReady;
  await loadAccount();
