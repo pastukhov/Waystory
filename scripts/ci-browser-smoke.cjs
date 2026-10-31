@@ -11,25 +11,26 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
    const context=await browser.newContext({locale:language==='ru'?'ru-RU':'en-GB',viewport:{width:390,height:844}});
    if(language==='en')await context.addInitScript(()=>localStorage.setItem('waystory-saved',JSON.stringify([{id:'legacy-place',title:'Старая русская карточка',subtitle:'Русское описание',lang:'ru',source:'https://ru.wikipedia.org/wiki/Test',blocks:[{id:'old',depth:0,title:'Главное',text:'Русский источник.'}]}])));
    const page=await context.newPage(),errors=[];page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
-   let storyGate=null,releaseStory;let failStory=false,configDelay=0,signedIn=true,failSession=false;const calls=[];
+   let tourGate=null,releaseTour;let configDelay=0,signedIn=true,failSession=false;const calls=[],tourCalls=[];
    const title=language==='ru'?'Казанский собор':'Kazan Cathedral';
    await page.route('https://fonts.googleapis.com/**',r=>r.abort());
    await page.route('https://fonts.gstatic.com/**',r=>r.abort());
    await page.route('**/api/session',r=>failSession?r.fulfill({status:503,json:{error:'temporary'}}):r.fulfill({json:{enabled:true,user:signedIn?{name:'Pilot',email:'pilot@example.com'}:null,usage:signedIn?{ai:{used:1,limit:null},tts:{used:2,limit:null}}:null}}));
    await page.route('**/auth/logout',r=>{signedIn=false;return r.fulfill({json:{ok:true}})});
-   await page.route('**/api/config',async r=>{if(configDelay)await new Promise(resolve=>setTimeout(resolve,configDelay));return r.fulfill({json:{ai:signedIn,mode:signedIn?'live':'demo',vision:signedIn,tts:signedIn}})});
+   await page.route('**/api/config',async r=>{if(configDelay)await new Promise(resolve=>setTimeout(resolve,configDelay));return r.fulfill({json:{ai:signedIn,tours:signedIn,mode:signedIn?'live':'demo',vision:signedIn,tts:signedIn}})});
    await page.route('**/api/guide',async r=>{
     const body=r.request().postDataJSON();calls.push(body);assert.equal(body.language,language);
     if(body.action==='translatePlaces')return r.fulfill({json:{language,places:body.places.map(p=>({...p,title,subtitle:language==='ru'?'История города':'City history'}))}});
-    if(body.action==='story'){
-     if(storyGate)await storyGate;
-     if(failStory)return r.fulfill({status:502,json:{error:'Не удалось проверить факты в ИИ-рассказе. Попробуйте ещё раз.',code:'story_unverified'}});
-     return r.fulfill({json:{title,language,storyVersion:5,detailLimited:false,blocks:[{id:'s0',depth:0,title,text:(language==='ru'?'Главное. ':'Essentials. ').repeat(40)},{id:'s1',depth:1,title,text:(language==='ru'?'История. ':'History. ').repeat(80)},{id:'s2',depth:2,title,text:(language==='ru'?'Подробности. ':'Details. ').repeat(150)}]}});
-    }
+    assert.notEqual(body.action,'story','current live config must activate tours');
     return r.fulfill({json:{text:language==='ru'?'Ответ по источнику.':'An answer based on the source.'}});
    });
    await page.route('**/api/speech',r=>{assert.equal(r.request().postDataJSON().language,language);return r.fulfill({contentType:'audio/wav',body:wave()})});
    await page.route('https://*.wikipedia.org/**',r=>r.fulfill({json:{query:{pages:{1:{pageid:1,title,description:'City history',coordinates:[{lat:36.57,lon:31.98}],extract:language==='ru'?'Собор находится в центре города. Здесь сохранилась историческая архитектура.':'The cathedral stands in the city centre. Historic architecture survives here.',fullurl:'https://'+language+'.wikipedia.org/wiki/Test'}}}}}));
+   const tour={id:'browser-tour',placeId:'wiki:'+language+':1',language,status:'ready',topics:[{id:'history',title:language==='ru'?'История':'History'}],chapters:[{id:'overview',topicId:'overview',status:'ready',text:(language==='ru'?'Обзор места. ':'Place overview. ').repeat(40)},{id:'history',topicId:'history',status:'ready',text:'Verified history.'}]};
+   await page.route('**/api/places/resolve',r=>r.fulfill({json:{place:{id:tour.placeId,refs:[{provider:'wikipedia',language,pageId:1}],names:{original:title,[language]:title},sourceIds:[]},sources:[]}}));
+   await page.route('**/api/tours',async r=>{tourCalls.push(r.request().postDataJSON());if(tourGate)await tourGate;return r.fulfill({json:{tourId:tour.id,tour}})});
+   await page.route('**/api/tours/browser-tour',r=>r.fulfill({json:tour}));
+   await page.route('**/api/tours/browser-tour/progress',r=>r.fulfill({json:r.request().postDataJSON()}));
    async function search(){await page.locator('#search-input').fill('cathedral');await page.locator('#search-form').evaluate(el=>el.requestSubmit());await page.waitForFunction(()=>document.querySelectorAll('#places .place-card').length===1)}
    await page.goto('http://127.0.0.1:'+app.address().port);
    assert.equal(await page.locator('#places .place-card').count(),0);
@@ -59,38 +60,24 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
    await page.waitForFunction(()=>/ИИ-гид подключён:|AI guide connected:/.test(document.querySelector('#mode-note p')?.textContent||''));await page.waitForFunction(expected=>document.querySelector('.card-title')?.textContent===expected,title);
    assert.equal(await page.locator('html').getAttribute('lang'),language);
    if(language==='en'){await page.locator('[data-tab="saved"]').click();await page.waitForFunction(expected=>document.querySelector('#library-grid .card-title')?.textContent===expected,title);await page.locator('[data-tab="explore"]').click();}
-   async function assertLoading(){
-    await page.locator('#story-loading').waitFor({state:'visible'});
-    assert.match(await page.locator('#story-loading').innerText(),language==='ru'?/Готовим рассказ/:/Preparing your story/);
-    for(const selector of ['.depth-label','.depth-switch','.story-play-row'])assert.equal(await page.locator(selector).isVisible(),false,selector);
-    assert.equal(await page.locator('#duration-label').textContent(),'');
-   }
-   storyGate=new Promise(resolve=>{releaseStory=resolve});
-   await page.locator('.card-listen').first().click();await assertLoading();releaseStory();storyGate=null;
-   await page.waitForFunction(()=>!document.querySelector('#story-play').disabled);
-   assert.equal(await page.locator('#story-loading').isVisible(),false);
-   // Refresh must hide controls and old duration again until the new story arrives.
-   storyGate=new Promise(resolve=>{releaseStory=resolve});await page.locator('#story-refresh').click();await assertLoading();releaseStory();storyGate=null;
-   await page.waitForFunction(expected=>document.querySelector('#story-title')?.textContent===expected&&!document.querySelector('#story-play').disabled,title);
-   assert.equal(await page.locator('#story-loading').isVisible(),false);
-   assert.equal(await page.locator('.story-play-row').isVisible(),true);
+   // The live server contract selects progressive tours. Old depth/story
+   // generation is covered by source/saved-story unit tests, not live fixtures.
+   tourGate=new Promise(resolve=>{releaseTour=resolve});
+   await page.locator('.card-listen').first().click();
+   await page.waitForFunction(()=>/Готовим план|Preparing the tour plan/.test(document.querySelector('#tour-panel').textContent));
+   for(const selector of ['.depth-label','.depth-switch'])assert.equal(await page.locator(selector).isVisible(),false,selector);
+   releaseTour();tourGate=null;await page.locator('[data-tour-overview]').waitFor();
+   assert.equal(tourCalls.length,1);assert.equal(calls.some(c=>c.action==='story'),false);
    const route=new URL(await page.locator('#story-map a').getAttribute('href'));assert.equal(route.searchParams.get('destination'),'36.57,31.98');assert.equal(await page.locator('#story-map a').getAttribute('rel'),'noopener noreferrer');
-   const durations=[];
-   for(const depth of [0,1,2]){await page.locator('.depth-switch [data-depth="'+depth+'"]').click();assert.equal(await page.locator('.story-block').count(),depth+1);durations.push(await page.locator('#duration-label').innerText())}
-   assert.equal(new Set(durations).size,3);
-   failStory=true;await page.locator('#story-refresh').click();await page.waitForFunction(()=>/текст Википедии|Wikipedia text/.test(document.querySelector('#story-message').textContent));assert.equal(await page.locator('#story-play').isEnabled(),true);assert.match(await page.locator('#story-refresh').textContent(),language==='ru'?/Попробовать создать/:/Try creating/);failStory=false;
    const speech=page.waitForRequest(r=>r.url().endsWith('/api/speech'));
-   await page.locator('#story-play').click();await speech;
+   await page.locator('[data-tour-overview]').click();await speech;
    assert.equal((await page.locator('#story-message').textContent()).includes('Illegal invocation'),false);
+   await page.locator('#question-input').fill(language==='ru'?'Какова история места?':'What is its history?');await page.locator('#question-form').evaluate(el=>el.requestSubmit());await page.locator('#answer').waitFor({state:'visible'});assert.ok(calls.some(c=>c.action==='question'));
    const bounds=await page.locator('#story-dialog').evaluate(el=>({width:el.clientWidth,scroll:el.scrollWidth}));assert.ok(bounds.scroll<=bounds.width+1,JSON.stringify(bounds));
    assert.deepEqual(errors,[]);
-   if(language==='en'){
-    failStory=true;await page.reload();await page.waitForFunction(()=>/AI guide connected:/.test(document.querySelector('#mode-note p')?.textContent||''));await page.locator('[data-tab="saved"]').click();await page.locator('#library-grid .card-listen').first().click();await page.waitForFunction(()=>!document.querySelector('#story-language-notice').hidden);assert.equal(await page.locator('#story-play').isDisabled(),true);
-   }
-   // Open immediately while config is deliberately delayed: AI must still run.
-   failStory=false;configDelay=600;await page.reload({waitUntil:'domcontentloaded'});await search();await page.locator('.card-listen').first().click();await page.waitForFunction(expected=>document.querySelector('#story-title')?.textContent===expected&&!document.querySelector('#story-play').disabled,title);
-   assert.equal(await page.locator('.story-block').count(),2);
-   assert.ok(calls.some(c=>c.action==='story'));await page.locator('[data-close="story-dialog"]').click();failSession=true;await page.reload();await page.waitForFunction(()=>document.querySelector('#account-status').textContent.includes('аккаунт')||document.querySelector('#account-status').textContent.includes('Could not load'));failSession=false;await page.locator('#account-open').click();await page.waitForFunction(()=>/ИИ-гид подключён:|AI guide connected:/.test(document.querySelector('#mode-note p')?.textContent||''));await page.locator('[data-close="account-dialog"]').click();await search();await page.locator('#reset-places').click();assert.equal(await page.locator('#places .place-card').count(),0);assert.equal(await page.locator('#places').innerText(),'');assert.equal(await page.locator('#reset-places').isVisible(),false);await page.locator('#account-open').click();await page.waitForFunction(()=>document.querySelector('#account-email').textContent==='pilot@example.com');assert.match(await page.locator('#account-usage').innerText(),/1 \/ (Безлимит|Unlimited)/);await page.locator('#account-logout').click();await page.waitForFunction(()=>document.querySelector('#account-open').textContent==='Войти'||document.querySelector('#account-open').textContent==='Sign in');await search();const before=calls.length;await page.locator('.card-listen').first().click();await page.waitForFunction(()=>document.querySelector('#account-dialog').open);assert.equal(await page.locator('#story-dialog').evaluate(el=>el.open),false);assert.equal(await page.locator('.story-block').count(),0);assert.equal(calls.length,before);assert.equal(await page.locator('#google-login').getAttribute('href'),'/auth/google');assert.equal(await page.locator('#google-login').isVisible(),true);await context.close();console.log(language+': UI, translated story, cumulative depth, native fetch audio and mobile width passed');
+   // Reload/selection waits for delayed capabilities and still uses /api/tours.
+   configDelay=600;await page.addInitScript(()=>localStorage.removeItem('waystory-tour-cursor'));await page.reload({waitUntil:'domcontentloaded'});await search();await page.locator('.card-listen').first().click();await page.locator('[data-tour-overview]').waitFor();assert.equal(calls.some(c=>c.action==='story'),false);
+   await page.locator('[data-close="story-dialog"]').click();failSession=true;await page.evaluate(()=>localStorage.removeItem('waystory-tour-cursor'));await page.reload();await page.waitForFunction(()=>document.querySelector('#account-status').textContent.includes('аккаунт')||document.querySelector('#account-status').textContent.includes('Could not load'));failSession=false;await page.locator('#account-open').click();await page.waitForFunction(()=>/ИИ-гид подключён:|AI guide connected:/.test(document.querySelector('#mode-note p')?.textContent||''));await page.locator('[data-close="account-dialog"]').click();await search();await page.locator('#reset-places').click();assert.equal(await page.locator('#places .place-card').count(),0);assert.equal(await page.locator('#places').innerText(),'');assert.equal(await page.locator('#reset-places').isVisible(),false);await page.locator('#account-open').click();await page.waitForFunction(()=>document.querySelector('#account-email').textContent==='pilot@example.com');assert.match(await page.locator('#account-usage').innerText(),/1 \/ (Безлимит|Unlimited)/);await page.locator('#account-logout').click();await page.waitForFunction(()=>document.querySelector('#account-open').textContent==='Войти'||document.querySelector('#account-open').textContent==='Sign in');await search();const before=calls.length;await page.locator('.card-listen').first().click();await page.waitForFunction(()=>document.querySelector('#account-dialog').open);assert.equal(await page.locator('#story-dialog').evaluate(el=>el.open),false);assert.equal(await page.locator('.story-block').count(),0);assert.equal(calls.length,before);assert.equal(await page.locator('#google-login').getAttribute('href'),'/auth/google');assert.equal(await page.locator('#google-login').isVisible(),true);await context.close();console.log(language+': UI, photo, translation, tour selection, questions, native audio, account and mobile width passed');
   }
   // Multi-source UI: deterministic OSM identity, regional evidence, missing material,
   // stale async responses and a saved v2 story. No upstream API calls.
@@ -103,44 +90,44 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
    let missing=false,calls=0;
    await page.route('https://fonts.**/**',r=>r.abort());
    await page.route('**/api/session',r=>r.fulfill({json:{enabled:true,user:{name:'Pilot',email:'pilot@example.com'}}}));
-   await page.route('**/api/config',r=>r.fulfill({json:{ai:true,vision:true,tts:false,multisource:true}}));
+   await page.route('**/api/config',r=>r.fulfill({json:{ai:true,tours:true,vision:true,tts:false,multisource:true}}));
    await page.route('**/api/places/search?**',r=>r.fulfill({json:{places:[place(1),place(2)],sources,statuses:[{provider:'wikivoyage',status:'unavailable'}]}}));
    // Keep discovery fixtures independent of AI failures and avoid upstream resolution.
-   await page.route('**/api/places/resolve',r=>r.fulfill({status:503,json:{error:'Resolution unavailable in this fixture'}}));
-   await page.route('**/api/places/enrich',async r=>{
-    const {placeId}=r.request().postDataJSON();if(placeId==='osm:node:1')await new Promise(resolve=>setTimeout(resolve,200));
+   await page.route('**/api/places/resolve',r=>r.fulfill({json:{place:{id:'wiki:en:1',refs:[{provider:'wikipedia',language:'en',pageId:1}],names:{original:'Saved v2',en:'Saved v2'},sourceIds:[]},sources:[]}}));
+   await page.route('**/api/places/enrich',()=>assert.fail('tours provide materials without legacy enrichment'));
+   await page.route('**/api/guide',r=>{const body=r.request().postDataJSON();assert.equal(body.action,'translatePlaces');return r.fulfill({json:{language,places:body.places}})});
+   await page.route('**/api/tours',async r=>{
+    const {placeId}=r.request().postDataJSON();calls++;if(placeId==='osm:node:1')await new Promise(resolve=>setTimeout(resolve,200));
     const officialLinks=[...Array.from({length:12},(_,i)=>({url:`https://museum.example/${placeId}/page-${i}`,title:`Website ${i}`,kind:'website'})),{url:`https://museum.example/${placeId}/guide`,title:'Official guide '+placeId,kind:'guide'},{url:`https://museum.example/${placeId}/audio`,title:'Official audio '+placeId,kind:'audio'}];
-    return r.fulfill({json:{officialLinks,searchLinks:[{url:'https://visitor.example/guide',title:'Independent visitor guide'}],discoveryStatus:{web:'unavailable',official:'ok'}}});
+    return r.fulfill({json:{tourId:'tour-'+placeId,tour:{id:'tour-'+placeId,placeId,language,status:missing?'failed':'ready',topics:[],chapters:[{id:'overview',topicId:'overview',status:'ready',text:'Verified '+placeId}],sources,officialLinks,searchLinks:[{url:'https://visitor.example/guide',title:'Independent visitor guide'}],outputLicense:'CC-BY-SA-4.0'}}});
    });
-   await page.route('**/api/guide',async r=>{const body=r.request().postDataJSON();if(body.action==='translatePlaces')return r.fulfill({json:{language,places:body.places}});calls++;if(missing)return r.fulfill({status:422,json:{error:'Недостаточно источников для рассказа об этом месте.'}});if(body.placeId==='osm:node:1')await new Promise(resolve=>setTimeout(resolve,200));return r.fulfill({json:{title:body.placeId||'Regenerated saved story',placeId:body.placeId,language,storyVersion:5,detailLimited:true,outputLicense:'CC-BY-SA-4.0',sources,blocks:[{id:'s-'+body.placeId,title:'Story',text:'A short story about this place.',depth:0,sourceIds:['voyage']}]}})});
    await ctx.addInitScript(()=>localStorage.setItem('waystory-saved',JSON.stringify([{id:'wiki-en-1',title:'Saved v2',lang:'en',storyLanguage:'en',storyVersion:2,aiGenerated:true,source:'https://en.wikipedia.org/?curid=1',blocks:[{id:'old',title:'Saved',text:'Saved story text.',depth:0}]}])));
    await page.goto('http://127.0.0.1:'+app.address().port);
    await page.locator('#search-input').fill('mosque');await page.locator('#search-form').evaluate(el=>el.requestSubmit());await page.waitForSelector('#places .place-card');
    assert.equal(await page.locator('#places .place-card').count(),2);
    await page.locator('.card-listen').first().click();await page.locator('[data-close="story-dialog"]').click();await page.locator('.card-listen').nth(1).click();
-   await page.waitForFunction(()=>document.querySelector('#story-title').textContent==='osm:node:2'&&!document.querySelector('#story-play').disabled);await page.waitForTimeout(250);assert.equal(await page.locator('#story-title').textContent(),'osm:node:2');
+   await page.locator('[data-tour-overview]').waitFor();await page.waitForTimeout(250);assert.equal(await page.locator('#story-title').textContent(),title+' 2');assert.match(await page.locator('#tour-panel').textContent(),/osm:node:2/);assert.doesNotMatch(await page.locator('#tour-panel').textContent(),/osm:node:1/);
    assert.match(await page.locator('#story-original').textContent(),/Hacımehmetli/);assert.match(await page.locator('#story-sources').textContent(),language==='ru'?/Региональный контекст/:/Regional context/);assert.equal(await page.locator('#story-sources a').first().getAttribute('href'),'https://en.wikivoyage.org/?curid=1');assert.equal(await page.locator('.story-block .citation-links a').count(),0);assert.equal(await page.locator('#story-sources').isVisible(),false);await page.locator('#story-attribution summary').click();assert.equal(await page.locator('#story-sources').isVisible(),true);await page.locator('#story-attribution summary').click();
    for(const width of [320,390,780]){await page.setViewportSize({width,height:844});const b=await page.locator('#story-dialog').evaluate(el=>({width:el.clientWidth,scroll:el.scrollWidth}));assert.ok(b.scroll<=b.width+1,JSON.stringify(b))}
-   missing=true;await page.locator('#story-refresh').click();await page.waitForFunction(()=>document.querySelector('#story-message').textContent.includes('Not enough')||document.querySelector('#story-message').textContent.includes('Недостаточно'));assert.equal(await page.locator('#story-map a').count(),1);assert.equal(await page.locator('#story-play').isDisabled(),true);assert.equal(await page.locator('#story-refresh').isVisible(),true);
-   for(const selector of ['.depth-label','.depth-switch','.story-play-row','#story-loading','#duration-label','#story-detail-notice','#story-source-note','#question-panel'])assert.equal(await page.locator(selector).isVisible(),false,selector);assert.equal(await page.locator('#story-save').isEnabled(),true);assert.equal(await page.locator('#story-sources a').count()>0,true);
+   assert.equal(await page.locator('.depth-switch').isVisible(),false);assert.equal(await page.locator('#story-refresh').isVisible(),false);assert.equal(await page.locator('#story-save').isEnabled(),true);
    await page.waitForFunction(()=>document.querySelector('#story-materials a')?.textContent==='Official guide osm:node:2');
    assert.equal(await page.locator('#story-materials').isVisible(),true);assert.equal(await page.locator('#story-materials > ul').first().locator('a').count(),8);
    assert.equal(await page.locator('#story-materials a').first().getAttribute('rel'),'noopener noreferrer');
-   assert.match(await page.locator('#story-materials').textContent(),language==='ru'?/Дополнительный веб-поиск недоступен/:/Additional web search is unavailable/);
    assert.match(await page.locator('#story-materials').textContent(),language==='ru'?/Найдено в интернете/:/Found on the web/);
    assert.doesNotMatch(await page.locator('#story-materials').textContent(),/osm:node:1/);
    for(const width of [320,390]){await page.setViewportSize({width,height:844});const b=await page.locator('#story-dialog').evaluate(el=>({width:el.clientWidth,scroll:el.scrollWidth}));assert.ok(b.scroll<=b.width+1,JSON.stringify(b))}
-   missing=false;await page.locator('#story-refresh').click();await page.waitForFunction(()=>!document.querySelector('#story-play').disabled);for(const selector of ['.depth-label','.depth-switch','#duration-label','#story-detail-notice'])assert.equal(await page.locator(selector).isVisible(),true,selector);
-   if(language==='en'){await page.locator('[data-close="story-dialog"]').click();await page.locator('[data-tab="saved"]').click();const before=calls;const regenerated=page.waitForResponse(r=>r.url().endsWith('/api/guide')&&r.request().postDataJSON()?.action==='story');await page.locator('#library-grid .card-listen').click();await regenerated;await page.waitForFunction(()=>document.querySelector('#story-title').textContent==='Regenerated saved story'&&!document.querySelector('#story-play').disabled);assert.equal(calls,before+1);assert.match(await page.locator('#story-source-note').textContent(),/AI/)}
+   missing=true;await page.locator('[data-close="story-dialog"]').click();await page.locator('.card-listen').nth(1).click();await page.waitForFunction(()=>/Не удалось подготовить экскурсию|Could not prepare the tour/.test(document.querySelector('#tour-panel').textContent));assert.equal(await page.locator('#story-map a').count(),1);
+   missing=false;await page.locator('[data-close="story-dialog"]').click();await page.locator('.card-listen').nth(1).click();await page.locator('[data-tour-overview]').waitFor();
+   if(language==='en'){await page.locator('[data-close="story-dialog"]').click();await page.locator('[data-tab="saved"]').click();const before=calls;await page.locator('#library-grid .card-listen').click();await page.locator('[data-tour-overview]').waitFor();assert.equal(calls,before+1);assert.match(await page.locator('#tour-panel').textContent(),/wiki:en:1/)}
    assert.deepEqual(errors,[]);await ctx.close();console.log(language+': multi-source mobile, citations, stale response, retry and library passed');
   }
-  // Regression: canonical English identity must not force English text after AI rejection.
+  // Source-only configuration preserves the requested-language article fallback.
   {
    const ctx=await browser.newContext({locale:'ru-RU',viewport:{width:390,height:844}}),page=await ctx.newPage(),editions=[];
    const station={id:'wiki:en:8392086',refs:[{provider:'wikipedia',language:'en',pageId:8392086},{provider:'wikipedia',language:'ru',pageId:231936}],names:{original:'Moscow Belorussky railway station',ru:'Белорусский вокзал'},category:'place',sourceIds:[]};
    await page.route('https://fonts.**/**',r=>r.abort());
    await page.route('**/api/session',r=>r.fulfill({json:{enabled:true,user:{name:'Pilot'}}}));
-   await page.route('**/api/config',r=>r.fulfill({json:{ai:true,multisource:true,tts:false}}));
+   await page.route('**/api/config',r=>r.fulfill({json:{ai:false,tours:false,multisource:true,tts:false}}));
    await page.route('**/api/places/search?**',r=>r.fulfill({json:{places:[station],sources:[],statuses:[]}}));
    await page.route('**/api/places/enrich',r=>r.fulfill({json:{officialLinks:[],discoveryStatus:{web:'not_needed',official:'empty'}}}));
    await page.route('**/api/guide',r=>r.fulfill({status:502,json:{error:'Не удалось проверить факты в ИИ-рассказе. Попробуйте ещё раз.',code:'story_unverified'}}));
@@ -149,8 +136,8 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
    await page.locator('#search-input').fill('Белорусский вокзал');await page.locator('#search-form').evaluate(el=>el.requestSubmit());await page.locator('.card-listen').first().click();
    await page.waitForFunction(()=>!document.querySelector('#story-play').disabled&&document.querySelector('#story-text').textContent.includes('Вокзал открыт'));
    assert.equal(await page.locator('#story-text h3').count(),0);assert.equal(await page.locator('#story-text .source-paragraph').count(),1);assert.deepEqual(editions,['ru.wikipedia.org']);assert.match(await page.locator('#story-text').innerText(),/Вокзал открыт/);assert.equal(await page.locator('#story-language-notice').isVisible(),false);
-   assert.match(await page.locator('#story-message').innerText(),/текст Википедии.*читать и слушать/);
-   await ctx.close();console.log('ru: Belorussky English identity, AI rejection, Russian readable/playable fallback passed');
+   assert.equal(await page.locator('#story-message').innerText(),'');
+   await ctx.close();console.log('ru: Belorussky English identity, source-only Russian readable/playable fallback passed');
   }
  }finally{await browser?.close();await new Promise(r=>app.close(r))}
 })().catch(e=>{console.error(e);process.exitCode=1});

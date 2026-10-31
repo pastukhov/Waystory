@@ -16,7 +16,7 @@ const {chromium}=require('playwright');
    const page=await ctx.newPage();page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(e.message));let nearby=0,failNetwork=mode==='network',releaseConfig;const configGate=mode==='late-config'?new Promise(r=>releaseConfig=r):Promise.resolve();
    await page.route('https://fonts.**/**',r=>r.abort());
    await page.route('**/api/session',r=>r.fulfill({json:{enabled:true,user:null}}));
-   await page.route('**/api/config',async r=>{await configGate;return r.fulfill({json:{ai:false,multisource:true}})});
+   await page.route('**/api/config',async r=>{await configGate;return r.fulfill({json:{ai:false,tours:false,multisource:true}})});
    await page.route('**/api/places/nearby?*',r=>{nearby++;return r.fulfill(failNetwork?{status:503,json:{error:'Источники мест временно недоступны.'}}:{json:{places:Array.from({length:5},(_,i)=>record(i+1,'Nearby '+i)),sources:[],statuses:[]}})});
    await page.route('**/api/places/search?*',r=>r.fulfill({json:{places:[record(99,'Manual result')],sources:[],statuses:[]}}));
    await page.goto('http://127.0.0.1:'+app.address().port);

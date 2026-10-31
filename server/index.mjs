@@ -142,7 +142,7 @@ export function createApp(options={}){
  if(!['GET','HEAD'].includes(req.method))return json(405,{error:'Метод не поддерживается.'});
  if(pathname.split('/').some(s=>s.startsWith('.'))||pathname.includes('\\'))return json(404,{error:'Не найдено.'});
  const file=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));if(!file.startsWith(root))return json(404,{error:'Не найдено.'});
- try{const body=await readFile(file);res.writeHead(200,{'Content-Type':mime[path.extname(file)]||'application/octet-stream'});res.end(req.method==='HEAD'?undefined:body)}catch{json(404,{error:'Не найдено.'})}
+ try{const body=await readFile(file);res.writeHead(200,{'Content-Type':mime[path.extname(file)]||'application/octet-stream','Cache-Control':'no-cache'});res.end(req.method==='HEAD'?undefined:body)}catch{json(404,{error:'Не найдено.'})}
 }));
  let shutdown,jobsShutdown;
  const stopJobs=()=>jobsShutdown||=(tourJobs?.shutdown()||Promise.resolve());
