@@ -87,7 +87,7 @@ export function createObservability({env=process.env,write=line=>console.log(lin
   if(event==='tour_storage'){update('tour_storage_bytes',{},number(f.bytes),'set')}else if(event==='tour_playback'){
    if(['first_audio','gap'].includes(f.type))update('tour_playback_duration_seconds',{type:f.type},number(f.durationMs,120000)/1000);
    if(f.type==='playback_error')update('tour_playback_errors_total',{code:pick(f.code,playbackCodes)},1);
-  }else if(event==='tour_model_detail'||event==='tour_generation_detail'){
+  }else if(event==='tour_model_detail'||event==='tour_generation_detail'||event==='tour_plan_detail'){
    const entry=safeTelemetryEntry({event:'waystory_'+event,requestId:requestId()||randomUUID(),...f});if(entry){const {event:_,requestId:__,...fields}=entry;log(event,fields)}
   }else if(event==='tour_job'){
    if(!tourStages.includes(f.stage)||!tourOutcomes.includes(f.outcome))return;
@@ -172,6 +172,7 @@ export function safeTelemetryEntry(p){
  const base={event:p.event,requestId:p.requestId,
   ...(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(p.timestamp||'')?{timestamp:p.timestamp}:{}),
   ...(/^[a-zA-Z0-9:._-]{1,100}$/.test(p.revision||'')?{revision:p.revision}:{})};
+ if(p.event==='waystory_tour_plan_detail')return {...base,...(/^[a-f0-9-]{36}$/.test(p.tourId||'')?{tourId:p.tourId}:{}),...Object.fromEntries(['candidates','admitted','available','limited','rejected'].map(k=>[k,Number.isSafeInteger(p[k])&&p[k]>=0?Math.min(p[k],1e6):0])),rejections:Object.fromEntries(['malformed_topic','invalid_title','invalid_summary','invalid_status','invalid_reason','missing_evidence','unknown_reference','missing_place','duplicate_topic','topic_cap'].filter(k=>Number.isSafeInteger(p.rejections?.[k])&&p.rejections[k]>0).map(k=>[k,Math.min(p.rejections[k],1e6)]))};
  if(p.event==='waystory_tour_model_detail'&&['success','provider_error','incomplete_response','invalid_json'].includes(p.reason))return {...base,schema:pick(p.schema,['tour_plan','tour_chapter'],'unknown'),reason:p.reason,finishReason:pick(p.finishReason,['stop','length','content_filter','tool_calls','function_call'],'unknown'),tokenCounts:Object.fromEntries(['prompt','completion','total'].filter(k=>Number.isSafeInteger(p.tokenCounts?.[k])&&p.tokenCounts[k]>=0).map(k=>[k,Math.min(p.tokenCounts[k],1e12)])),...(status(p.status)!=='none'?{status:p.status}:{})};
  if(['waystory_tour_job','waystory_tour_generation_detail'].includes(p.event)&&tourStages.includes(p.stage)&&tourOutcomes.includes(p.outcome))return {...base,stage:p.stage,outcome:p.outcome,durationMs:number(p.durationMs),...(p.event==='waystory_tour_generation_detail'&&[1,2].includes(p.attempt)?{attempt:p.attempt}:{}),...Object.fromEntries(['tourId','diagnosticId'].filter(k=>/^[a-f0-9-]{36}$/.test(p[k]||'')).map(k=>[k,p[k]])),...(/^(overview|plan|[a-f0-9]{64})$/.test(p.chapterId||'')?{chapterId:p.chapterId}:{}),...(tourReasons.includes(p.reason)?{reason:p.reason}:{}),...(['top_shape','top_duplicate','top_unknown','claim_shape','claim_duplicate','claim_unknown','claim_subset'].includes(p.evidenceIssue)?{evidenceIssue:p.evidenceIssue}:{}),...(Array.isArray(p.reasons)?{reasons:[...new Set(p.reasons.filter(r=>tourReasons.includes(r)))].slice(0,20)}:{})};
  const model=/^[a-zA-Z0-9/._:@-]{1,120}$/.test(p.model||'')?p.model:'unknown';

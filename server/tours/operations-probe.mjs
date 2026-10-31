@@ -26,7 +26,7 @@ export async function runKuskovoTourProbe({env=process.env,report=()=>{}}={}){
   // diagnostic invokes the service directly; it creates no session or cookies.
   const authDb=new DatabaseSync(env.AUTH_DB_PATH||'data/waystory.sqlite',{readOnly:true});let owner;
   try{const allowed=new Set((env.GOOGLE_ALLOWED_EMAILS||'').split(',').map(s=>s.trim().toLowerCase()));const users=authDb.prepare('SELECT id,email FROM users').all().filter(u=>allowed.has(u.email.toLowerCase()));if(users.length!==1)throw tourError('auth_required',401);owner=users[0].id}finally{authDb.close()}
-  const observer=createObservability({env,write:line=>{const entry=JSON.parse(line);if(['waystory_tour_job','waystory_tour_generation_detail','waystory_tour_model_detail'].includes(entry.event))report(entry)}});
+  const observer=createObservability({env,write:line=>{const entry=JSON.parse(line);if(['waystory_tour_job','waystory_tour_generation_detail','waystory_tour_model_detail','waystory_tour_plan_detail'].includes(entry.event))report(entry)}});
   let modelCalls=0,planCalls=0,chapterCalls=0,inputTokens=0,outputTokens=0,usageResponses=0;const stageCalls={};
   const record=observer.record;observer.record=(event,fields)=>{if(event==='usage'){const u=fields.usage;if(Number.isSafeInteger(u?.prompt_tokens)&&Number.isSafeInteger(u?.completion_tokens)){usageResponses++;inputTokens+=u.prompt_tokens;outputTokens+=u.completion_tokens}}record(event,fields)};
   const fetchModel=observer.wrapFetch(async(url,options)=>{
