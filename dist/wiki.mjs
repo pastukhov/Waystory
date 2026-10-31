@@ -1,4 +1,3 @@
-import {splitSentences} from './core.mjs';
 const editions=['ru','en','tr'];
 const edition=lang=>{if(!/^[a-z]{2,3}(?:-[a-z]{2,12})?$/.test(lang))throw new Error('Invalid Wikipedia edition');return lang};
 async function api(params,signal,lang='ru'){
@@ -51,8 +50,7 @@ export async function loadPlace(place,signal,language=place.lang){
   const j=await api({action:'query',pageids:place.pageid,prop:'extracts|info|coordinates',explaintext:1,exchars:9000,inprop:'url'},signal,edition(place.lang));
   const page=Object.values(j.query?.pages||{})[0];if(!page?.extract)throw new Error('Для этого места нет текста. Выберите другой объект.');
   const clean=page.extract.replace(/==+[^\n]*==+/g,'').replace(/\[[^\]]*\]/g,'').trim();
-  const sentences=splitSentences(clean).slice(0,32);
-  const blocks=[];for(let i=0;i<sentences.length;i+=3)blocks.push({id:place.id+'-'+i,depth:i===0?0:i<9?1:2,title:i===0?'Главное':i<9?'История и детали':'Подробнее',text:sentences.slice(i,i+3).join(' ')});
+  const blocks=clean.split(/\n+/u).map(text=>text.trim()).filter(Boolean).map((text,i)=>({id:place.id+'-paragraph-'+i,depth:0,title:'',text}));
   return {...place,originalTitle:page.title||place.originalTitle||place.title,coords:page.coordinates?.[0]?[page.coordinates[0].lat,page.coordinates[0].lon]:place.coords,blocks,source:page.fullurl||place.source,sourceText:clean.slice(0,9000),questions:[]};
 }
 

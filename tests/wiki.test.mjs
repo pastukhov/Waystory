@@ -43,5 +43,11 @@ test('fallback chapters keep the complete hospital address and initials together
  const address='Давыдковская больница имени А. М. Никифорова находится по адресу: ул. Давыдковская, вл. 7.';
  const extract=address+' Строительство началось в 2011 году. Площадь — 52 тыс. кв. метров. Здесь четвёртое предложение.';
  globalThis.fetch=async()=>Response.json({query:{pages:{1:{pageid:1,title:'Больница',extract}}}});
- try{const result=await loadPlace({id:'wiki:ru:1',pageid:1,lang:'ru'});assert.equal(result.blocks[0].text,address+' Строительство началось в 2011 году. Площадь — 52 тыс. кв. метров.');assert.equal(result.blocks[1].text,'Здесь четвёртое предложение.')}finally{globalThis.fetch=old}
+ try{const result=await loadPlace({id:'wiki:ru:1',pageid:1,lang:'ru'});assert.equal(result.blocks.length,1);assert.equal(result.blocks[0].text,extract);assert.equal(result.blocks[0].title,'')}finally{globalThis.fetch=old}
+});
+
+test('source paragraphs preserve Kuskovo sentence and have no invented chapters',async()=>{
+ const old=globalThis.fetch;const paragraphs=['Ансамбль включает «Итальянский» (XVIII в.) и «Голландский» (XVIII в.) домики. Ещё предложение. И ещё. Четвёртое.', 'Усадьба состояла из трёх частей.'];
+ globalThis.fetch=async()=>Response.json({query:{pages:{1:{extract:paragraphs.join('\n\n')}}}});
+ try{const result=await loadPlace({id:'wiki:ru:1',pageid:1,lang:'ru'});assert.deepEqual(result.blocks.map(b=>b.text),paragraphs);assert.ok(result.blocks.every(b=>b.depth===0&&b.title===''))}finally{globalThis.fetch=old}
 });

@@ -148,7 +148,7 @@ function wave(){const pcm=Buffer.alloc(8000),b=Buffer.alloc(44+pcm.length);b.wri
    await page.goto('http://127.0.0.1:'+app.address().port);
    await page.locator('#search-input').fill('Белорусский вокзал');await page.locator('#search-form').evaluate(el=>el.requestSubmit());await page.locator('.card-listen').first().click();
    await page.waitForFunction(()=>!document.querySelector('#story-play').disabled&&document.querySelector('#story-text').textContent.includes('Вокзал открыт'));
-   assert.deepEqual(editions,['ru.wikipedia.org']);assert.match(await page.locator('#story-text').innerText(),/Вокзал открыт/);assert.equal(await page.locator('#story-language-notice').isVisible(),false);
+   assert.equal(await page.locator('#story-text h3').count(),0);assert.equal(await page.locator('#story-text .source-paragraph').count(),1);assert.deepEqual(editions,['ru.wikipedia.org']);assert.match(await page.locator('#story-text').innerText(),/Вокзал открыт/);assert.equal(await page.locator('#story-language-notice').isVisible(),false);
    assert.match(await page.locator('#story-message').innerText(),/текст Википедии.*читать и слушать/);
    await ctx.close();console.log('ru: Belorussky English identity, AI rejection, Russian readable/playable fallback passed');
   }
