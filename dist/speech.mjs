@@ -27,11 +27,11 @@ export class Narrator {
 
 // Keep the same block-completion contract for cloud and device voices.
 export class CloudNarrator extends Narrator {
- constructor(options={}){super(options);this.audio=options.audio||new Audio();this.fetchFn=options.fetchFn||globalThis.fetch.bind(globalThis);this.cloud=false;this.ready=false}
+ constructor(options={}){super(options);this.audio=options.audio||new Audio();this.fetchFn=options.fetchFn||globalThis.fetch.bind(globalThis);this.cloud=false;this.ready=false;this.onAuthRequired=options.onAuthRequired||(()=>this.onError('Чтобы продолжить озвучку, войдите снова.'))}
  get rate(){return this._rate||1}
  set rate(value){this._rate=value;if(this.audio)this.audio.playbackRate=value;if(this.local)this.local.rate=value}
  release(){if(this.objectUrl){URL.revokeObjectURL(this.objectUrl);this.objectUrl=null}}
- stop(){this.local?.stop();this.local=null;this.localPending=null;super.stop();this.controller?.abort();if(this.audio){this.audio.onended=null;this.audio.onerror=null;this.audio.pause();this.audio.removeAttribute('src');this.audio.load()}this.ready=false;this.release()}
+ stop(){this.authPending=null;this.local?.stop();this.local=null;this.localPending=null;super.stop();this.controller?.abort();if(this.audio){this.audio.onended=null;this.audio.onerror=null;this.audio.pause();this.audio.removeAttribute('src');this.audio.load()}this.ready=false;this.release()}
  startLocal(parts){
   this.localPending=null;
   this.local=new Narrator({synth:this.synth,Utterance:this.Utterance,onState:state=>this.setState(state),onBlock:part=>{this.current=part.block;this.onBlock(part.block)},onComplete:part=>{if(part.last)this.onComplete(part.block)},onError:this.onError});
@@ -46,9 +46,11 @@ export class CloudNarrator extends Narrator {
  }
  play(blocks){
   if(!this.cloud)return super.play(blocks);
+  const saved=this.authPending,retained=saved?.language===this.language&&saved.parts.every(p=>blocks.some(b=>b.id===p.block.id&&b.text===p.block.text))?saved.parts:null;
   this.stop();const token=this.epoch;this.controller=new AbortController();const signal=this.controller.signal;
   const parts=[];
   for(const block of blocks){let text=normalizeSpeechText(block.text);while(text.length>1000){let end=text.lastIndexOf(' ',1000);if(end<500)end=1000;parts.push({block,text:text.slice(0,end),last:false});text=text.slice(end).trimStart()}if(text)parts.push({block,text,last:true})}
+  if(retained&&parts.length>=retained.length&&parts.slice(-retained.length).every((p,i)=>p.block.id===retained[i].block.id&&p.text===retained[i].text))parts.splice(0,parts.length,...retained);
   if(this.deviceFallback){this.startLocal(parts);return}
   const language=this.language;
   // Keep one future blob, never an unhandled rejected promise or an object URL.
@@ -72,7 +74,7 @@ export class CloudNarrator extends Narrator {
     this.audio.onended=()=>{if(token!==this.epoch||ended)return;ended=true;if(part.last)this.onComplete(part.block);next()};
     this.audio.onerror=()=>{if(token!==this.epoch)return;this.fallback([part,...parts],'Не удалось воспроизвести аудио. Попробуйте ещё раз.',token)};
     if(this.state!=='paused')this.startAudio(token);
-   }catch(e){if(token!==this.epoch)return;if(!e.status||e.status>=500){this.fallback([part,...parts],e.message||'Не удалось загрузить голос. Проверьте соединение.',token);return}this.stop();this.onError(e.message)}
+   }catch(e){if(token!==this.epoch)return;if(!e.status||e.status>=500){this.fallback([part,...parts],e.message||'Не удалось загрузить голос. Проверьте соединение.',token);return}if(e.status===401){const unfinished=[part,...parts];this.stop();this.authPending={language,parts:unfinished};this.onAuthRequired();return}this.stop();this.onError(e.message)}
   };next();
  }
  async startAudio(token){

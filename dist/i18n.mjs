@@ -16,6 +16,7 @@ export const messages={
 "Определяем, где вы":"Finding your location",
 "Ищем достопримечательности рядом":"Finding nearby landmarks",
 "Ищем достопримечательности":"Finding landmarks",
+"Чтобы продолжить озвучку, войдите снова.":"Sign in again to continue listening.",
 "Разрешите доступ к геопозиции в окне браузера. Или найдите место по названию.":"Allow location access in your browser, or search for a place by name.",
 "Собираем интересные места поблизости. Это может занять несколько секунд.":"Looking for interesting places nearby. This may take a few seconds.",
 "Рассказ ИИ не прошёл проверку по источникам. Доступен исходный текст.":"The AI story did not pass source verification. The source text is available.",
