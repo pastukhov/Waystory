@@ -168,6 +168,8 @@ test('local references remain scoped to selected spans and preserve subset and u
   let reviews=0;const c=await generateChapter({place,language:'ru',topic:wide,spans},{complete:async()=>({language:'ru',text,evidenceIds:ids,claims}),review:async()=>{reviews++;return supported()}});
   assert.equal(c.status,'failed');assert.equal(reviews,0);
  }
- const c=await generateChapter({place,language:'en',topic:{...topic,evidenceIds:[spans[1].id]},spans},{complete:async()=>answer('The Type1 museum is open.',['e1'],'en'),review:supported});
+ for(const text of ['The Type1 museum is open.','The E1 route reaches the museum.']){
+ const c=await generateChapter({place,language:'en',topic:{...topic,evidenceIds:[spans[1].id]},spans},{complete:async()=>answer(text,['e1'],'en'),review:supported});
  assert.equal(c.status,'ready');assert.deepEqual(c.evidenceIds,[spans[1].id]);
+ }
 });
