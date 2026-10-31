@@ -96,13 +96,15 @@ Task 1 implementation note: diagnostics.mjs delegates to safeTelemetryEntry, so 
 
 Create `server/sources/spans.mjs`; modify `server/sources/facts.mjs`; create `tests/evidence-spans.test.mjs`, `tests/chapter-review.test.mjs`.
 Interfaces: `buildEvidenceSpans(documents):EvidenceSpan[]`; `reviewChapter({text,claims},spans,{fetchFn,headers,model,endpoint,signal}):Promise<{outcome:'supported'|'rejected'|'error',issues:{claimIndex:number|null,reason:string}[]}>`.
-- [ ] Тесты: исходные offsets воспроизводят текст; одинаковый snapshot даёт одинаковые IDs; изменение текста/revision меняет IDs; foreign-language source не переводится при создании spans; запрещённый allowModelInput документ пропускается.
-- [ ] Делить на исходные абзацы; большие абзацы — куски до 1200 символов по пробелу с перекрытием до 150 символов, сохраняя offsets. Не применять splitSentences. Отдельный span не считается предложением.
-- [ ] Модель возвращает для claims evidenceIds, а reviewer проверяет смысл по соответствующим исходным spans и отсутствие непокрытых фактов во всём тексте. Не просить перепечатывать цитаты.
-- [ ] Тесты: существующий, но нерелевантный span → rejected; придуманный ID → rejected до модели; факт о районе вместо объекта → rejected; противоречие → rejected; перевод подтверждённого факта → supported; finish_reason=length → error, а не unsupported.
-- [ ] Один repair-review разрешён только для invalid_json/incomplete_response/invalid schema, с меньшим заданием и оставшимся deadline; смысловой отказ исправляет generator, не бесконечный reviewer.
-- [ ] Legacy validateSupport пока сохранить для /api/guide. Новый путь включить только tours, чтобы не менять старый контракт одним PR.
+- [x] Тесты: исходные offsets воспроизводят текст; одинаковый snapshot даёт одинаковые IDs; изменение текста/revision меняет IDs; foreign-language source не переводится при создании spans; запрещённый allowModelInput документ пропускается.
+- [x] Делить на исходные абзацы; большие абзацы — куски до 1200 символов по пробелу с перекрытием до 150 символов, сохраняя offsets. Не применять splitSentences. Отдельный span не считается предложением.
+- [x] Модель возвращает для claims evidenceIds, а reviewer проверяет смысл по соответствующим исходным spans и отсутствие непокрытых фактов во всём тексте. Не просить перепечатывать цитаты.
+- [x] Тесты: существующий, но нерелевантный span → rejected; придуманный ID → rejected до модели; факт о районе вместо объекта → rejected; противоречие → rejected; перевод подтверждённого факта → supported; finish_reason=length → error, а не unsupported.
+- [x] Один repair-review разрешён только для invalid_json/incomplete_response/invalid schema, с меньшим заданием и оставшимся deadline; смысловой отказ исправляет generator, не бесконечный reviewer.
+- [x] Legacy validateSupport пока сохранить для /api/guide. Новый путь включить только tours, чтобы не менять старый контракт одним PR.
 - [ ] node --test tests/evidence-spans.test.mjs tests/chapter-review.test.mjs; npm test; commit/CI/Deploy.
+
+Task 2 implementation note: reviewer accepts optional `consumeCall()` (awaited before every real model request; false/throw denies), `deadline` (epoch ms), and injected `now`. The later tour service owns their shared budget/quota. Review uses at most one technical repair (2000 output tokens after the initial 3000), keeps all chapter text and supplied original spans, and never repairs semantic rejection. Existing guide review is unchanged. Fixture tests verify the request and response contract without paid model calls. Local targeted tests: 21 passing; full suite: 359 passing; syntax/diff checks passing. Review/CI/Deploy pending.
 
 ## Task 3 / PR3 — Исследование тем и полные разрешённые материалы
 
