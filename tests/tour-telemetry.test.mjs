@@ -17,3 +17,7 @@ test('playback deduplication survives a minute rate reset and expires with the t
  let time=0;const record=createPlaybackEvents({now:()=>time}),tour={id:'tour',expiresAt:120000,chapters:[{id:'overview',status:'ready'}]},body={chapterId:'overview',attemptId:'459fdcd9-e879-4ea2-9a17-65116befea38',type:'first_audio',durationMs:0};
  assert.deepEqual(record('owner',tour,body),{recorded:true});time=61000;assert.deepEqual(record('owner',tour,body),{recorded:false});
 });
+
+test('public job error keeps the safe diagnostic ID used by stage logs',async()=>{
+ const {tourError,publicJobError}=await import('../server/tours/store.mjs'),error=tourError('provider_timeout');assert.equal(publicJobError(error).diagnosticId,error.diagnosticId);assert.match(publicJobError({code:'provider_error',diagnosticId:'SECRET'}).diagnosticId,/^[a-f0-9-]{36}$/);
+});

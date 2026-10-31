@@ -27,8 +27,8 @@ export async function runKuskovoTourProbe({env=process.env,report=()=>{}}={}){
   const authDb=new DatabaseSync(env.AUTH_DB_PATH||'data/waystory.sqlite',{readOnly:true});let owner;
   try{const allowed=new Set((env.GOOGLE_ALLOWED_EMAILS||'').split(',').map(s=>s.trim().toLowerCase()));const users=authDb.prepare('SELECT id,email FROM users').all().filter(u=>allowed.has(u.email.toLowerCase()));if(users.length!==1)throw tourError('auth_required',401);owner=users[0].id}finally{authDb.close()}
   const observer=createObservability({env,write:line=>{const entry=JSON.parse(line);if(entry.event==='waystory_tour_job')report(entry)}});
-  let modelCalls=0,planCalls=0,chapterCalls=0,inputTokens=0,outputTokens=0,usageMissing=0;const stageCalls={};
-  const record=observer.record;observer.record=(event,fields)=>{if(event==='usage'){const u=fields.usage;if(Number.isSafeInteger(u?.prompt_tokens)&&Number.isSafeInteger(u?.completion_tokens)){inputTokens+=u.prompt_tokens;outputTokens+=u.completion_tokens}else usageMissing++}record(event,fields)};
+  let modelCalls=0,planCalls=0,chapterCalls=0,inputTokens=0,outputTokens=0,usageResponses=0;const stageCalls={};
+  const record=observer.record;observer.record=(event,fields)=>{if(event==='usage'){const u=fields.usage;if(Number.isSafeInteger(u?.prompt_tokens)&&Number.isSafeInteger(u?.completion_tokens)){usageResponses++;inputTokens+=u.prompt_tokens;outputTokens+=u.completion_tokens}}record(event,fields)};
   const fetchModel=observer.wrapFetch(async(url,options)=>{
    if(!String(url).endsWith('/audio/speech')&&!String(url).includes('tts:synthesize')){
     const schema=JSON.parse(options.body).response_format?.json_schema?.name;
@@ -52,7 +52,7 @@ export async function runKuskovoTourProbe({env=process.env,report=()=>{}}={}){
   try{passed=await observer.run(async()=>{
    const resolved=await places.resolve({provider:'wikipedia',language:'ru',pageId:173387},{language:'ru'});if(resolved.place.id!=='wiki:ru:173387')throw tourError('source_unavailable');
    return runTourProbe({service,jobs,ownerId:owner,placeId:resolved.place.id,speech:async value=>{auth.consume({id:owner},'tts');return speech.run(value)},report});
-  });return passed}finally{report({probe:'tour-usage',passed,modelCalls,planCalls,chapterCalls,stageCalls,inputTokens,outputTokens,usageMissing,searchCalls:researchStats?.searchCalls??null,pageCalls:researchStats?.pageCalls??null,durationMs:Date.now()-started})}
+  });return passed}finally{report({probe:'tour-usage',passed,modelCalls,planCalls,chapterCalls,stageCalls,inputTokens,outputTokens,usageMissing:Math.max(0,modelCalls-usageResponses),searchCalls:researchStats?.searchCalls??null,pageCalls:researchStats?.pageCalls??null,durationMs:Date.now()-started})}
  }catch(error){report({probe:'tour-error',code:['auth_required','budget_exhausted','provider_timeout','provider_error','source_unavailable'].includes(error?.code)?error.code:'provider_error',status:Number.isInteger(error?.status)?error.status:null});return false}
  finally{await jobs?.shutdown();auth.close();placeStore.close()}
 }

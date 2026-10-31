@@ -29,3 +29,17 @@ test('playback telemetry records first audio once and first fragment gap without
  const player=createTourPlayer({client:{playbackEvent:async(id,body)=>events.push({id,...body})},narrator,saveProgress:async()=>{},now:()=>time});player.open(tour);await player.play('overview');time=250;narrator.onState('playing');narrator.onState('playing');time=300;narrator.onState('loading');time=400;narrator.onState('playing');narrator.onState('paused');time=800;narrator.onState('playing');
  assert.deepEqual(events.map(({type,durationMs})=>({type,durationMs})),[{type:'first_audio',durationMs:150},{type:'gap',durationMs:100}]);assert.equal(events[0].attemptId,events[1].attemptId);player.dispose();
 });
+
+test('fragment gap includes delayed TTS through repeated loading states and manual resume creates no gap',async()=>{
+ let time=0;const events=[],narrator={state:'idle',play(){this.onState('loading')},stop(){},pause(){this.onState('paused')},resume(){this.onState('loading')}};
+ const player=createTourPlayer({client:{playbackEvent:async(id,body)=>events.push(body)},narrator,saveProgress:async()=>{},now:()=>time});const tour={id:'tour',language:'ru',topics:[],chapters:[{id:'overview',topicId:'overview',status:'ready',text:'Музей.'}]};
+ player.open(tour);await player.play('overview');time=50;narrator.onState('playing');time=100;narrator.onState('loading');time=500;narrator.onState('loading');time=550;narrator.onState('playing');assert.equal(events.find(e=>e.type==='gap').durationMs,450);
+ events.length=0;await player.play('overview');time=600;narrator.onState('playing');time=700;narrator.onState('paused');time=1000;narrator.onState('loading');time=1100;narrator.onState('playing');assert.equal(events.filter(e=>e.type==='gap').length,0);player.dispose();
+});
+
+test('pause before first audio excludes human wait and cancels continuous boundary gap',async()=>{
+ let time=0;const events=[],narrator={state:'idle',play(){this.onState('loading')},stop(){}};
+ const player=createTourPlayer({client:{playbackEvent:async(id,body)=>events.push(body)},narrator,saveProgress:async()=>{},now:()=>time});const tour={id:'tour',language:'ru',topics:[{id:'t'}],chapters:[{id:'overview',topicId:'overview',status:'ready',text:'Обзор.'},{id:'t',topicId:'t',status:'ready',text:'Музей.'}]};
+ player.open(tour);await player.play('overview');player.setContinuous(true);time=50;narrator.onState('playing');time=100;narrator.onComplete({id:'overview'});await new Promise(r=>setImmediate(r));time=200;narrator.onState('paused');time=1000;narrator.onState('loading');time=1050;narrator.onState('playing');
+ assert.equal(events.filter(e=>e.chapterId==='t'&&e.type==='gap').length,0);assert.equal(events.find(e=>e.chapterId==='t'&&e.type==='first_audio').durationMs,150);player.dispose();
+});
