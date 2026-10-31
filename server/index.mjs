@@ -142,10 +142,11 @@ export function createApp(options={}){
  const file=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));if(!file.startsWith(root))return json(404,{error:'Не найдено.'});
  try{const body=await readFile(file);res.writeHead(200,{'Content-Type':mime[path.extname(file)]||'application/octet-stream'});res.end(req.method==='HEAD'?undefined:body)}catch{json(404,{error:'Не найдено.'})}
 }));
- let shutdown;
- server.on('close',()=>{shutdown||=(async()=>{await tourJobs?.shutdown();auth.close?.();store?.close?.()})()});
+ let shutdown,jobsShutdown;
+ const stopJobs=()=>jobsShutdown||=(tourJobs?.shutdown()||Promise.resolve());
+ server.on('close',()=>{shutdown||=(async()=>{await stopJobs();auth.close?.();store?.close?.()})()});
  const close=server.close.bind(server);
- server.close=callback=>close(error=>{Promise.resolve(shutdown).then(()=>callback?.(error),failure=>callback?.(error||failure))});
+ server.close=callback=>{stopJobs();return close(error=>{Promise.resolve(shutdown).then(()=>callback?.(error),failure=>callback?.(error||failure))})};
  return server}
 export function closeOnSignals(server,{processTarget=process,timeoutMs=5000}={}){
  let closing=false;

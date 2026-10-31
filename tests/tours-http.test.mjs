@@ -91,10 +91,10 @@ async function liveFixture(t,{holdPlan=false,limit=30,repair=false,policy='wikim
   return Response.json({choices:[{finish_reason:finish,message:{content:JSON.stringify(result)}}]});
  },logWriter:line=>logs.push(line)});
  await new Promise(resolve=>app.listen(0,'127.0.0.1',resolve));
- t.after(()=>{release();return new Promise((resolve,reject)=>app.close(error=>error?reject(error):resolve()))});
+ t.after(()=>{release();if(!app.listening)return;return new Promise((resolve,reject)=>app.close(error=>error?reject(error):resolve()))});
  const request=async(path,method='GET',body)=>{const r=await fetch('http://127.0.0.1:'+app.address().port+path,{method,headers:{...headers,cookie},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:r.status,body:await r.json()}};
  const wait=async(id,predicate)=>{for(let i=0;i<200;i++){const r=await request('/api/tours/'+id);if(predicate(r.body))return r.body;await new Promise(resolve=>setTimeout(resolve,2))}assert.fail('tour did not settle')};
- return {app,request,wait,calls,auth,place,profiles,sourceCalls,logs,release,usage:()=>auth.usage({id:'owner'})};
+ return {app,request,wait,calls,auth,place,profiles,sourceCalls,logs,release,cookie,usage:()=>auth.usage({id:'owner'})};
 }
 test('real composition reserves duplicate once, researches full corpus with official identity, charges every model call and hides source bodies',async t=>{
  const f=await liveFixture(t,{holdPlan:true,repair:true});
@@ -143,4 +143,13 @@ test('SIGTERM in a Node process runs job shutdown before normal exit',async()=>{
   const ready=new Promise(resolve=>child.stdout.on('data',chunk=>{output+=chunk;if(output.includes('ready'))resolve()}));
   await ready;const exit=new Promise(resolve=>child.once('exit',(code,signal)=>resolve({code,signal})));child.kill('SIGTERM');assert.deepEqual(await exit,{code:0,signal:null});assert.match(output,/jobs drained/);
  }finally{child.kill('SIGKILL')}
+});
+test('shutdown rejects a preexisting partial POST before reservation or paid work',async t=>{
+ const f=await liveFixture(t),body=JSON.stringify({placeId:f.place.id,language:'ru'});
+ const received=new Promise(resolve=>f.app.once('request',resolve));
+ let closed;const response=new Promise((resolve,reject)=>{
+  const req=httpRequest({host:'127.0.0.1',port:f.app.address().port,path:'/api/tours',method:'POST',headers:{...headers,cookie:f.cookie,'content-length':Buffer.byteLength(body)}},res=>{res.resume();res.once('end',()=>resolve(res.statusCode))});
+  req.once('error',reject);req.write(body.slice(0,2));received.then(()=>{closed=new Promise(resolve=>f.app.close(resolve));req.end(body.slice(2))});
+ });
+ assert.equal(await response,503);await closed;assert.equal(f.calls.length,0);
 });
