@@ -18,7 +18,7 @@ export async function runTourFixtures({report=()=>{}}={}){
    modelCalls++;const body=JSON.parse(options.body),payload=JSON.parse(body.messages[1].content),schema=body.response_format.json_schema.name;let data;
    if(schema==='tour_plan')data={topics:name==='poor'?[]:payload.spans.slice(1,4).map((span,i)=>({title:['История','Архитектура','Музей'][i],summary:'Подтверждённая тема.',status:'available',reason:null,evidenceIds:[span.id]}))};
    else if(schema==='chapter_grounding')data={supported:true,issues:[]};
-   else{const span=payload.spans[0],index=originals.indexOf(span.text),text=ru[index];data={language:'ru',text,evidenceIds:[span.id],claims:[{text,evidenceIds:[span.id]}]};}
+   else{const span=payload.spans[0],index=originals.indexOf(span.text),text=ru[index];data={language:'ru',segments:[{text,evidenceIds:[span.id]}]};}
    return Response.json({usage:{prompt_tokens:10,completion_tokens:10},choices:[{finish_reason:'stop',message:{content:JSON.stringify(data)}}]});
   }});
   const research=createTourResearch({collect:async()=>({documents:name==='wrong_object'?[]:[doc],statuses:[]}),search:name==='wrong_object'?async()=>({calls:1,candidates:[{url:'https://other.example/museum',title:'Another Museum',snippet:'Another museum in a different country',identitySignals:{}}],outcomes:[]}):null,loadPage:async()=>{throw Error('Wrong-object page should never load')}});
