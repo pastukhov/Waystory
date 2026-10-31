@@ -3,6 +3,24 @@ import {estimatedSeconds} from './duration.mjs';
 
 // Explicit UI catalog: Russian source keys, English equivalents.
 export const messages={
+"сек":"sec",
+"Экскурсия":"Tour",
+"Слушать обзор":"Listen to overview",
+"Продолжить экскурсию":"Continue tour",
+"Продолжить с сохранённого места":"Resume from saved position",
+"Готовим план экскурсии…":"Preparing the tour plan\u2026",
+"Не удалось подготовить экскурсию. Попробуйте открыть место снова.":"Could not prepare the tour. Try opening the place again.",
+"Обзор":"Overview",
+"Недостаточно материалов по этой теме":"Not enough material for this topic",
+"Не удалось подготовить главу.":"Could not prepare the chapter.",
+"Готовим главу…":"Preparing chapter\u2026",
+"Глава по запросу":"Chapter on request",
+"Прослушано":"Listened",
+"Повторить":"Retry",
+"Слушать тему":"Listen to topic",
+"Читать главу":"Read chapter",
+"Не удалось загрузить экскурсию. Повторите попытку.":"Could not load the tour. Please try again.",
+
 "Путеводители и аудиогиды":"Guides and audio guides",
 "Официальный сайт":"Official website",
 "Выставки":"Exhibitions",

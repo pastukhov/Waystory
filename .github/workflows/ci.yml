@@ -81,6 +81,7 @@ jobs:
         run: |
           node scripts/ci-browser-smoke.cjs
           node scripts/ci-nearby-smoke.cjs
+          node scripts/ci-tours-smoke.cjs
 
   required-checks:
     name: Required checks

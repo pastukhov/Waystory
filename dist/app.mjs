@@ -9,12 +9,15 @@ import {t,localizeDocument,durationLabel,availableDepths,clampDepth,sourceLangua
 import {illustration} from './art.mjs';
 import {buildQueue,restoreLibrary,saveEntry,validateImage,safeSourceUrl,createEpoch} from './core.mjs';
 import {CloudNarrator} from './speech.mjs';
+import {createToursClient} from './tours-client.mjs';
+import {createTourPlayer} from './tour-player.mjs';
+import {renderTour} from './tours-view.mjs';
 import {requestGuide} from './ai-client.mjs';
 import {searchPlaces,nearbyPlaces,loadPlace} from './wiki.mjs';
 
 localizeDocument();
 const $=id=>document.getElementById(id);
-const state={user:null,authEnabled:false,multisource:false,webEnrichment:false,tab:'explore',places:[],selected:null,heard:[],depth:1,current:null,ai:false,vision:false,answer:false,photo:null,photoUrl:null};
+const state={user:null,authEnabled:false,multisource:false,tours:false,webEnrichment:false,tab:'explore',places:[],selected:null,heard:[],depth:1,current:null,ai:false,vision:false,answer:false,photo:null,photoUrl:null};
 const placeEpoch=createEpoch(),searchEpoch=createEpoch(),answerEpoch=createEpoch(),photoEpoch=createEpoch();
 let discoveryToken=0;
 const libraryMetadata=new Map(),libraryAttempts=new Set();
@@ -85,21 +88,64 @@ async function loadAccount(){
 $('account-open').onclick=()=>{openDialog('account-dialog');config()};
 $('account-logout').onclick=async()=>{
  $('account-logout').disabled=true;
- try{const r=await fetch('/auth/logout',{method:'POST'});if(!r.ok)throw new Error();narrator.stop();location.reload()}
+ try{const r=await fetch('/auth/logout',{method:'POST'});if(!r.ok)throw new Error();tourPlayer.dispose();localStorage.removeItem('waystory-tour-cursor');narrator.stop();location.reload()}
  catch{$('account-status').textContent=t('Не удалось выйти. Повторите попытку.');$('account-logout').disabled=false}
 };
 if(new URL(location.href).searchParams.has('auth_error')){openDialog('account-dialog');$('account-status').textContent=t('Не удалось войти через Google. Повторите вход или проверьте приглашение.');const url=new URL(location.href);url.searchParams.delete('auth_error');window.history.replaceState(null,'',url.pathname+url.search+url.hash)}
+function recordListening(){if(state.selected){history=saveEntry(history,state.selected);persist('waystory-history',history);renderLibrary()}}
 const narrator=new CloudNarrator({
  onState:s=>{document.body.classList.toggle('playing',s==='playing');$('player-pause').textContent=['playing','loading'].includes(s)?'Ⅱ':'▶';$('player-pause').setAttribute('aria-label',['playing','loading'].includes(s)?t('Пауза'):t('Слушать'));$('story-play').textContent=['playing','loading'].includes(s)?t('Ⅱ Пауза'):s==='paused'?t('▶ Продолжить'):t('▶ Слушать рассказ');$('player-state').textContent=s==='loading'?t('Загружаем голос…'):s==='playing'?t('Слушаем · ')+(state.current?.title||t('История')):s==='paused'?t('На паузе'):s==='finished'?t('Рассказ завершён'):t('Готово к прослушиванию')},
  onBlock:block=>{state.current=block;document.querySelectorAll('.story-block').forEach(el=>el.classList.toggle('active',el.dataset.block===block.id))},
  onComplete:block=>{
    if(block.id.startsWith('answer-'))return;
    if(!state.heard.includes(block.id))state.heard.push(block.id);
-   if(state.selected){history=saveEntry(history,state.selected);persist('waystory-history',history);renderLibrary()}
+   recordListening();
    updateProgress();document.querySelectorAll('.story-block').forEach(el=>el.classList.toggle('heard',state.heard.includes(el.dataset.block)));
  },onAuthRequired:()=>{state.user=null;state.ai=false;state.vision=false;message(t('Чтобы продолжить озвучку, войдите снова.'));openDialog('account-dialog');loadAccount()},onError:error=>message(speechError(error))
 });
 narrator.language=LANGUAGE;
+const toursClient=createToursClient();
+let tourMode=false,tourPlayback=false,tourLoading=null,tourFailure=false;
+const cursorKey='waystory-tour-cursor';
+function readTourCursor(){try{const value=JSON.parse(localStorage.getItem(cursorKey));return value&&typeof value.tourId==='string'&&typeof value.chapterId==='string'&&Number.isSafeInteger(value.chunkIndex)&&value.chunkIndex>=0&&Number.isFinite(value.offsetSeconds)&&value.offsetSeconds>=0&&typeof value.textHash==='string'?value:null}catch{return null}}
+function tourAuth(){state.user=null;state.ai=false;state.vision=false;message(t('Чтобы продолжить озвучку, войдите снова.'));openDialog('account-dialog');loadAccount()}
+function tourError(error){if(error?.status===401){tourAuth();return}message(t('Не удалось загрузить экскурсию. Повторите попытку.'))}
+function backupTour(value){try{localStorage.setItem(cursorKey,JSON.stringify({tourId:value.tourId,chapterId:value.chapterId,chunkIndex:value.chunkIndex,offsetSeconds:value.offsetSeconds,textHash:value.textHash,chunkingVersion:value.chunkingVersion}))}catch{/* Progress remains available server-side. */}}
+const tourPlayer=createTourPlayer({client:toursClient,narrator,onBackup:backupTour,onAuthRequired:tourAuth,onError:tourError,onChapterComplete:recordListening,onChange:value=>{
+ if(!tourMode)return;drawTour(value);
+ if(tourPlayback&&value.tour){$('player-progress').style.width=(100*value.completedChapterIds.length/Math.max(1,value.tour.chapters.length))+'%';$('player-progress-label').textContent=value.completedChapterIds.length+' / '+value.tour.chapters.length}
+}});
+function drawTour(value=tourPlayer.getState()){
+ if(!tourMode){$('tour-panel').hidden=true;return}
+ if(tourFailure){$('tour-panel').hidden=false;$('tour-panel').replaceChildren();const note=document.createElement('p');note.textContent=t('Не удалось загрузить экскурсию. Повторите попытку.');$('tour-panel').append(note);return}
+ const current=tourLoading?null:value.tour;
+ const listen=topicId=>{tourPlayback=true;message('');showPlayer();tourPlayer.setContinuous(false);tourPlayer.play(topicId)};
+ renderTour($('tour-panel'),current,{...value,onOverview:()=>listen('overview'),onTopic:listen,onRetry:topicId=>{tourPlayback=true;showPlayer();tourPlayer.setContinuous(false);tourPlayer.play(topicId,{retry:true})},onContinue:()=>{
+  tourPlayback=true;message('');showPlayer();tourPlayer.setContinuous(true);const v=tourPlayer.getState(),topics=['overview',...(v.tour?.topics||[]).map(t=>t.id)],index=v.selected?topics.indexOf(v.selected.topicId):-1;
+  const next=topics.slice(index+1).find(id=>!v.completedChapterIds.includes(v.tour.chapters.find(c=>c.topicId===id)?.id)&&v.tour.chapters.find(c=>c.topicId===id)?.status!=='insufficient');if(next)tourPlayer.play(next);
+ },onResume:()=>{tourPlayback=true;message('');showPlayer();tourPlayer.resume()},onPause:()=>tourPlayer.pause()});
+}
+async function openTour(place,token,signal){
+ tourMode=true;tourLoading=true;tourFailure=false;drawTour();
+ try{if(!place.placeId){const resolved=await resolvePlace(place,signal,LANGUAGE);if(!placeEpoch.isCurrent(token))return;place.placeId=resolved.placeId}
+  const result=await toursClient.start({placeId:place.placeId,language:LANGUAGE},{signal});
+  const tour=result.tour||await toursClient.waitFor(result.tourId,value=>value.status!=='planning',{signal});
+  if(!placeEpoch.isCurrent(token)||signal.aborted)return;tourLoading=false;tourPlayer.open(tour,readTourCursor());
+  Object.assign(place,{sources:tour.sources?.length?tour.sources:place.sources,officialLinks:tour.officialLinks||place.officialLinks,searchLinks:tour.searchLinks||place.searchLinks,materialsLoading:false});renderMaterials($('story-materials'),place,LANGUAGE);
+  if(tour.sources?.length){renderSources($('story-sources'),tour.sources,tour.outputLicense);$('story-attribution').hidden=false}
+ }catch(error){if(!placeEpoch.isCurrent(token)||signal.aborted)return;tourLoading=false;tourFailure=true;drawTour();tourError(error)}
+}
+window.addEventListener('pagehide',()=>tourPlayer.stop());
+async function restoreTour(){
+ const cursor=readTourCursor();if(!cursor||!state.tours||!state.user||state.selected)return;const token=placeEpoch.next();placeController?.abort();placeController=new AbortController();
+ try{const tour=await toursClient.get(cursor.tourId,{signal:placeController.signal});if(!placeEpoch.isCurrent(token)||state.selected)return;
+  let place={id:tour.placeId,placeId:tour.placeId,title:t('Экскурсия'),blocks:[]};
+  const wiki=/^wiki:([a-z]+):(\d+)$/.exec(tour.placeId),osm=/^osm:(node|way|relation):(\d+)$/.exec(tour.placeId),wd=/^wd:(Q\d+)$/.exec(tour.placeId);
+  const ref=wiki?{provider:'wikipedia',language:wiki[1],pageId:Number(wiki[2])}:osm?{provider:'osm',kind:osm[1],id:osm[2]}:wd?{provider:'wikidata',id:wd[1]}:null;
+  if(ref){try{place=await resolvePlace({...place,refs:[ref]},placeController.signal,LANGUAGE);if(place.pageid)place=await loadPlace({...place,blocks:undefined},placeController.signal,LANGUAGE)}catch(error){if(error.name==='AbortError')return}}
+  if(!placeEpoch.isCurrent(token))return;state.selected={...place,sources:tour.sources?.length?tour.sources:place.sources,outputLicense:tour.outputLicense,officialLinks:tour.officialLinks||[],searchLinks:tour.searchLinks||[]};tourMode=true;tourLoading=false;renderStory();tourPlayer.open(tour,cursor);openDialog('story-dialog');
+ }catch(error){if(error.status===401)tourAuth();else if(error.status===404){try{localStorage.removeItem(cursorKey)}catch{}}}
+}
 function updateProgress(){const all=state.selected?.blocks?.filter(b=>b.depth<=state.depth)||[];const count=all.filter(b=>state.heard.includes(b.id)).length;$('player-progress').style.width=(all.length?100*count/all.length:0)+'%';$('player-progress-label').textContent=count+t(' из ')+all.length+t(' фрагментов')}
 function renderStory(){
  const p=state.selected;if(!p)return;const hasStory=!!p.blocks?.some(b=>b.text?.trim());
@@ -109,7 +155,8 @@ function renderStory(){
  $('story-original').textContent=localNameLabel(p,LANGUAGE)+(p.nativeName||originalPlaceName(p));$('story-original').hidden=(p.nativeName||originalPlaceName(p))===p.title;const map=placeMapAnchor(p);$('story-map').replaceChildren(...(map?[map]:[]));if(p.coordinateKind==='centroid'||p.coordinateConflict){const note=document.createElement('small');note.textContent=t(p.coordinateConflict?'Координаты источников расходятся. Ищите место по названию.':'Точка обозначает центр объекта, не вход.');$('story-map').append(note)}
  $('story-title').textContent=p.title;$('reopen-story').textContent=p.title;$('story-category').textContent=metadata(p.category)||t('История места');$('story-address').textContent=p.address&&(p.lang||(/https:\/\/([a-z]+)\.wikipedia\.org/.exec(p.source||'')?.[1]))===LANGUAGE?p.address:t(p.placeId?'Материалы о месте':'Материалы Википедии');$('story-kind').textContent=!hasStory?t('Материалы о месте'):p.evidenceScope==='area'?t('Региональный контекст'):p.demo?t('ГОТОВАЯ ИСТОРИЯ · РЕЖИМ ЗНАКОМСТВА'):p.aiGenerated?t('ИИ-РАССКАЗ ПО ИСТОЧНИКУ'):t('ТЕКСТ ИЗ ВИКИПЕДИИ');
  showArt($('story-art'),p);updateSaveButton();renderText();renderSources($('story-sources'),p.sources,p.outputLicense);$('story-attribution').hidden=!p.sources?.length;renderMaterials($('story-materials'),p,LANGUAGE);$('story-refresh').hidden=!state.ai&&!p.pageid;$('story-refresh').textContent=t(p.blocks?.length?'Обновить рассказ по источникам':'Повторить поиск материалов');
- $('story-detail-notice').hidden=!hasStory||!(p.detailLimited||availableDepths(p.blocks).length<3);$('story-detail-notice').textContent=ui('limited');
+ if(tourMode){document.querySelector('.depth-label').hidden=true;document.querySelector('.depth-switch').hidden=true;$('story-refresh').hidden=true;drawTour()}
+ $('story-detail-notice').hidden=tourMode||!hasStory||!(p.detailLimited||availableDepths(p.blocks).length<3);$('story-detail-notice').textContent=ui('limited');
  $('story-language-notice').hidden=!hasStory||canListen(p);$('story-language-notice').textContent=ui('original')+' ('+(sourceLanguage(p)||ui('unknown'))+'). '+ui('noVoice');
  const url=safeSourceUrl(p.source);$('story-source').hidden=!url;if(url)$('story-source').href=url;
  $('story-source').hidden=!!p.sources?.length||!url;$('story-source-note').textContent=p.demo?t('Подготовленный пример на основе статьи. Иллюстрация стилизована. Это не ответ ИИ в реальном времени.'):p.aiGenerated?t(p.storyVersion===STORY_VERSION?'Рассказ создан ИИ по указанным источникам. Проверьте важные детали.':'Сохранённый рассказ. Источники ещё не перепроверены.'):t('Озвучивается текст статьи, разделённый на фрагменты. Доступен по лицензии статьи; авторы и история изменений — в источнике. Это не ответ ИИ.');
@@ -120,6 +167,7 @@ function renderStory(){
 }
 function renderText(){const p=state.selected;if(!p)return;state.depth=clampDepth(p.blocks,state.depth);const blocks=(p.blocks||[]).filter(b=>b.depth<=state.depth);$('story-text').replaceChildren(...blocks.map(b=>{const el=document.createElement('section');el.className='story-block';el.dataset.block=b.id;el.classList.toggle('heard',state.heard.includes(b.id));el.classList.toggle('active',state.current?.id===b.id);const title=document.createElement('h3');title.textContent=metadata(stripSourceCitations(b.title));const text=document.createElement('p');text.textContent=stripSourceCitations(b.text);if(!b.title)el.classList.add('source-paragraph');el.append(...(b.title?[title,text]:[text]));return el}));$('duration-label').textContent=durationLabel(p.blocks,state.depth);document.querySelectorAll('[data-depth]').forEach(b=>{const depth=+b.dataset.depth;b.disabled=!availableDepths(p.blocks).includes(depth);b.classList.toggle('selected',depth===state.depth);b.setAttribute('aria-pressed',String(depth===state.depth));if(b.closest('.depth-switch'))b.textContent=t(['Коротко','Обычно','Подробно'][depth])+' · '+durationLabel(p.blocks,depth)});updateProgress()}
 async function selectPlace(place){
+ tourPlayer.clear();tourMode=false;tourPlayback=false;tourLoading=null;tourFailure=false;$('tour-panel').hidden=true;
  const token=placeEpoch.next();answerEpoch.next();answerController?.abort();placeController?.abort();placeController=new AbortController();const signal=placeController.signal;narrator.stop();state.selected=null;state.heard=[];state.current=null;state.answer=false;
  await configReady;
  await loadAccount();
@@ -133,7 +181,7 @@ async function selectPlace(place){
    // Saved stories remain usable if refreshing their place identity fails.
    if(state.multisource&&!p.placeId){try{const resolved=await resolvePlace(p,signal,LANGUAGE);p={...resolved,...p,placeId:resolved.placeId}}catch(e){if(e.name==='AbortError')throw e}}
    if(!placeEpoch.isCurrent(token)||signal.aborted)return;
-   const materials={officialLinks:p.officialLinks||[],searchLinks:p.searchLinks||[],discoveryStatus:p.discoveryStatus,materialsLoading:!!p.placeId};
+   const materials={officialLinks:p.officialLinks||[],searchLinks:p.searchLinks||[],discoveryStatus:p.discoveryStatus,materialsLoading:!!p.placeId&&!state.tours};
    const acceptMaterials=result=>{
     if(!placeEpoch.isCurrent(token)||signal.aborted)return;
     if(Array.isArray(result.officialLinks))materials.officialLinks=result.officialLinks;
@@ -144,30 +192,31 @@ async function selectPlace(place){
    };
    Object.assign(p,materials);state.selected=p;renderMaterials($('story-materials'),p,LANGUAGE);
    // Run independently of narration, including cached stories and AI failures.
-   if(p.placeId)enrichPlace(p.placeId,signal,LANGUAGE).then(acceptMaterials).catch(e=>{
+   if(p.placeId&&!state.tours)enrichPlace(p.placeId,signal,LANGUAGE).then(acceptMaterials).catch(e=>{
     if(e.name==='AbortError'||!placeEpoch.isCurrent(token)||signal.aborted)return;
     acceptMaterials({discoveryStatus:{web:'unavailable',official:'unavailable'}});
    });
-   if(state.ai&&!canReuseStory(p,LANGUAGE)){try{const sourceText=p.sourceText||p.blocks.map(b=>b.text).join('\n');const result=await aiRequest({action:'story',refresh:p.refreshSources===true,...(p.placeId?{placeId:p.placeId}:{place:{title:p.originalTitle||p.title,source:p.source,text:sourceText}})},signal);if(result.discoveryStatus||result.officialLinks||result.searchLinks)acceptMaterials(result);if(result.blocks?.length&&result.language===LANGUAGE&&result.storyVersion===STORY_VERSION){p={...p,title:result.title||p.title,originalTitle:p.originalTitle||p.title,blocks:result.blocks,sourceText,storyLanguage:result.language,cardLanguage:LANGUAGE,subtitle:result.blocks[0].text.slice(0,180),storyVersion:result.storyVersion,placeId:result.placeId||p.placeId,sources:result.sources||p.sources,outputLicense:result.outputLicense,detailLimited:result.detailLimited,evidenceScope:result.evidenceScope,sourceOutcome:result.sourceOutcome,refreshSources:false,aiGenerated:true,demo:false};if(placeEpoch.isCurrent(token))message('')}else throw new Error('Invalid story response')}catch(e){if(e.name==='AbortError')throw e;storyError=e;if(placeEpoch.isCurrent(token))message(safeError(e,'ИИ-рассказ недоступен.'))}}
+   if(state.ai&&!state.tours&&!canReuseStory(p,LANGUAGE)){try{const sourceText=p.sourceText||p.blocks.map(b=>b.text).join('\n');const result=await aiRequest({action:'story',refresh:p.refreshSources===true,...(p.placeId?{placeId:p.placeId}:{place:{title:p.originalTitle||p.title,source:p.source,text:sourceText}})},signal);if(result.discoveryStatus||result.officialLinks||result.searchLinks)acceptMaterials(result);if(result.blocks?.length&&result.language===LANGUAGE&&result.storyVersion===STORY_VERSION){p={...p,title:result.title||p.title,originalTitle:p.originalTitle||p.title,blocks:result.blocks,sourceText,storyLanguage:result.language,cardLanguage:LANGUAGE,subtitle:result.blocks[0].text.slice(0,180),storyVersion:result.storyVersion,placeId:result.placeId||p.placeId,sources:result.sources||p.sources,outputLicense:result.outputLicense,detailLimited:result.detailLimited,evidenceScope:result.evidenceScope,sourceOutcome:result.sourceOutcome,refreshSources:false,aiGenerated:true,demo:false};if(placeEpoch.isCurrent(token))message('')}else throw new Error('Invalid story response')}catch(e){if(e.name==='AbortError')throw e;storyError=e;if(placeEpoch.isCurrent(token))message(safeError(e,'ИИ-рассказ недоступен.'))}}
    // Restore the article/device speech path when AI is unavailable. Never overwrite a saved story.
    if((!p.blocks?.length||!p.aiGenerated&&!canListen(p))&&p.pageid){try{const loaded=await loadPlace(p.blocks?.length?p:{...p,blocks:undefined},signal,LANGUAGE);p={...loaded,...(p.placeId?{coords:p.coords}: {})}}catch(e){if(e.name==='AbortError')throw e;if(placeEpoch.isCurrent(token))message(safeError(e,'Не удалось загрузить рассказ. Попробуйте другое место.'))}}
-   if(!placeEpoch.isCurrent(token))return;Object.assign(p,materials);state.selected=p;$('story-play').disabled=!canListen(p);$('story-restart').disabled=!canListen(p);$('story-save').disabled=false;$('question-panel').hidden=false;renderStory();
+   if(!placeEpoch.isCurrent(token))return;Object.assign(p,materials);state.selected=p;$('story-play').disabled=!canListen(p);$('story-restart').disabled=!canListen(p);$('story-save').disabled=false;$('question-panel').hidden=false;tourMode=state.tours;renderStory();
+   if(state.tours)openTour(p,token,signal);
    if(storyError?.code==='story_unverified'){message(storyVerificationMessage(p,LANGUAGE));$('story-refresh').textContent=t('Попробовать создать ИИ-рассказ ещё раз')}
  }catch(e){if(e.name==='AbortError')return;if(placeEpoch.isCurrent(token)){message(safeError(e,'Не удалось загрузить рассказ. Попробуйте другое место.'));state.selected=state.selected||{...place,blocks:place.blocks||[]};state.selected.materialsLoading=false;renderStory()}}
 }
-function showPlayer(){if(!state.selected)return;$('player').hidden=false;document.body.classList.add('has-player')}
-function play(){if(!state.user){openDialog('account-dialog');loadAccount();return;}if(!state.selected||!canListen(state.selected))return;if(['playing','loading'].includes(narrator.state)){narrator.pause();return}if(narrator.state==='paused'){narrator.resume();return}state.answer=false;let queue=buildQueue(state.selected,state.depth,state.heard);if(!queue.length){state.heard=[];queue=buildQueue(state.selected,state.depth,[]);renderText()}message('');showPlayer();narrator.play(queue)}
-function setDepth(depth){if(!state.selected||!availableDepths(state.selected.blocks).includes(depth))return;answerEpoch.next();answerController?.abort();const playing=['playing','loading'].includes(narrator.state);const wasPaused=narrator.state==='paused';narrator.stop();state.answer=false;state.depth=depth;state.current=null;renderText();const queue=buildQueue(state.selected,depth,state.heard);if(!queue.length){message(t('Главное вы уже услышали. Можно выбрать «Подробнее» или начать сначала.'));return}message(wasPaused?t('Глубина изменена. Нажмите «Слушать рассказ», когда будете готовы.'):'');if(playing&&canListen(state.selected)){showPlayer();narrator.play(queue)}}
-document.querySelectorAll('[data-depth]').forEach(b=>b.onclick=()=>setDepth(+b.dataset.depth));$('story-play').onclick=play;$('player-pause').onclick=play;
-$('story-restart').onclick=()=>{if(!state.selected)return;narrator.stop();state.heard=[];state.current=null;renderText();play()};
+function showPlayer(){if(!state.selected)return;document.querySelector('.player-depth').hidden=tourPlayback;$('player').hidden=false;document.body.classList.add('has-player')}
+function play(){if(tourPlayback){if(!state.user){tourAuth();return}if(['playing','loading'].includes(narrator.state))tourPlayer.pause();else tourPlayer.resume();return}if(!state.user){openDialog('account-dialog');loadAccount();return;}if(!state.selected||!canListen(state.selected))return;if(['playing','loading'].includes(narrator.state)){narrator.pause();return}if(narrator.state==='paused'){narrator.resume();return}state.answer=false;let queue=buildQueue(state.selected,state.depth,state.heard);if(!queue.length){state.heard=[];queue=buildQueue(state.selected,state.depth,[]);renderText()}message('');showPlayer();narrator.play(queue)}
+function setDepth(depth){if(tourPlayback)return;if(!state.selected||!availableDepths(state.selected.blocks).includes(depth))return;answerEpoch.next();answerController?.abort();const playing=['playing','loading'].includes(narrator.state);const wasPaused=narrator.state==='paused';narrator.stop();state.answer=false;state.depth=depth;state.current=null;renderText();const queue=buildQueue(state.selected,depth,state.heard);if(!queue.length){message(t('Главное вы уже услышали. Можно выбрать «Подробнее» или начать сначала.'));return}message(wasPaused?t('Глубина изменена. Нажмите «Слушать рассказ», когда будете готовы.'):'');if(playing&&canListen(state.selected)){showPlayer();narrator.play(queue)}}
+document.querySelectorAll('[data-depth]').forEach(b=>b.onclick=()=>setDepth(+b.dataset.depth));$('story-play').onclick=()=>{if(tourPlayback){tourPlayer.stop();tourPlayback=false}play()};$('player-pause').onclick=play;
+$('story-restart').onclick=()=>{if(!state.selected)return;tourPlayback=false;tourPlayer.stop();narrator.stop();state.heard=[];state.current=null;renderText();play()};
 $('story-refresh').onclick=()=>{if(state.selected)selectPlace({...state.selected,aiGenerated:false,blocks:[],sourceText:'',refreshSources:true})};
 $('story-save').onclick=()=>{if(state.selected)toggleSave(state.selected)};
 $('reopen-story').onclick=()=>openDialog('story-dialog');
-$('player-stop').onclick=()=>{narrator.stop();state.current=null;$('player').hidden=true;document.body.classList.remove('has-player')};
+$('player-stop').onclick=()=>{tourPlayer.stop();narrator.stop();state.current=null;$('player').hidden=true;document.body.classList.remove('has-player')};
 $('rate').oninput=e=>{narrator.rate=Number(e.target.value);$('rate-value').textContent=narrator.rate.toFixed(2).replace(/0$/,'')+'×'};
 async function aiRequest(payload,signal){try{return await requestGuide({...payload,language:LANGUAGE},{signal})}catch(e){if(e.status===401){state.user=null;state.ai=false;state.vision=false;openDialog('account-dialog');loadAccount()}throw e}}
 async function ask(question,prepared){
- if(!state.selected)return;const current=state.selected;const token=answerEpoch.next();answerController?.abort();answerController=new AbortController();narrator.stop();state.answer=true;$('answer').hidden=false;$('answer').textContent=t('Готовим ответ…');$('continue-story').hidden=false;
+ if(!state.selected)return;tourPlayer.stop();tourPlayback=false;const current=state.selected;const token=answerEpoch.next();answerController?.abort();answerController=new AbortController();narrator.stop();state.answer=true;$('answer').hidden=false;$('answer').textContent=t('Готовим ответ…');$('continue-story').hidden=false;
  try{const answer=prepared?{text:prepared}:await aiRequest({action:'question',question,...(current.placeId?{placeId:current.placeId}:{place:{source:current.source}}),heardBlockIds:state.heard.slice(0,20)},answerController.signal);const text=answer.text;
  if(!answerEpoch.isCurrent(token)||state.selected?.id!==current.id)return;
  const heading=document.createElement('strong');heading.textContent=question;const p=document.createElement('span');p.textContent=text;const sourcePanel=document.createElement('div');renderSources(sourcePanel,answer.sources,answer.outputLicense);const listen=document.createElement('button');listen.textContent=t('▶ Слушать ответ');listen.onclick=()=>{showPlayer();narrator.play([{id:'answer-'+Date.now(),title:t('Ответ на вопрос'),text}])};$('answer').replaceChildren(heading,p,citationLinks(answer.sourceIds,answer.sources),sourcePanel,listen);$('question-input').value='';
@@ -241,8 +290,9 @@ $('identify-photo').onclick=async()=>{
  finally{if(photoEpoch.isCurrent(token))$('identify-photo').disabled=!state.vision||!state.photo}
 };
 $('photo-dialog').addEventListener('close',()=>{cancelPhoto();$('photo-note').textContent=t('Фото отправится только после нажатия «Узнать».')});
-async function config(){await loadAccount();const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),8000);try{const r=await fetch('/api/config',{headers:{Accept:'application/json'},signal:controller.signal});if(!r.ok||!r.headers.get('content-type')?.includes('application/json'))return;const c=await r.json();state.multisource=c.multisource===true;state.webEnrichment=c.webEnrichment===true;state.ai=c.ai===true&&!!state.user;state.vision=c.vision===true&&!!state.user;narrator.cloud=c.tts===true&&!!state.user;if(!state.user){$('mode-note').querySelector('p').textContent=t('Поиск доступен без входа. ИИ-рассказы, вопросы и облачная озвучка — после входа через Google.');$('photo-note').textContent=t('Войдите через Google, чтобы пользоваться ИИ.');}if(narrator.cloud){$('voice-description').textContent=t('Облачная озвучка. Текст отправляется на озвучку при нажатии «Слушать». Готовые фрагменты временно сохраняются на сервере.');$('rate-description').textContent=t('Темп меняется сразу, без повторного синтеза.');}if(state.ai){$('mode-note').querySelector('p').textContent=t('ИИ-гид подключён: рассказы по источникам, вопросы и распознавание фото. Подробность можно менять во время прослушивания.');$('about-ai-title').textContent=t('ИИ-гид подключён');$('about-ai-description').textContent=t('Рассказы и ответы создаёт ИИ по переданному источнику. Фото помогает предположить название места. ')+(narrator.cloud?t('Озвучка создаётся облачным сервисом.'):t('Озвучка использует голос вашего устройства.'));$('photo-note').textContent=t('Выберите фото. Оно отправится только после нажатия «Узнать».');$('identify-photo').disabled=!state.vision||!state.photo;if(state.selected)renderStory();translateDiscovery(discoveryToken);translateLibrary()}}catch{/* Static hosting intentionally has no AI server. */}finally{clearTimeout(timer)}}
+async function config(){await loadAccount();const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),8000);try{const r=await fetch('/api/config',{headers:{Accept:'application/json'},signal:controller.signal});if(!r.ok||!r.headers.get('content-type')?.includes('application/json'))return;const c=await r.json();state.multisource=c.multisource===true;state.tours=c.tours===true&&!!state.user;state.webEnrichment=c.webEnrichment===true;state.ai=c.ai===true&&!!state.user;state.vision=c.vision===true&&!!state.user;narrator.cloud=c.tts===true&&!!state.user;if(!state.user){$('mode-note').querySelector('p').textContent=t('Поиск доступен без входа. ИИ-рассказы, вопросы и облачная озвучка — после входа через Google.');$('photo-note').textContent=t('Войдите через Google, чтобы пользоваться ИИ.');}if(narrator.cloud){$('voice-description').textContent=t('Облачная озвучка. Текст отправляется на озвучку при нажатии «Слушать». Готовые фрагменты временно сохраняются на сервере.');$('rate-description').textContent=t('Темп меняется сразу, без повторного синтеза.');}if(state.ai){$('mode-note').querySelector('p').textContent=t('ИИ-гид подключён: рассказы по источникам, вопросы и распознавание фото. Подробность можно менять во время прослушивания.');$('about-ai-title').textContent=t('ИИ-гид подключён');$('about-ai-description').textContent=t('Рассказы и ответы создаёт ИИ по переданному источнику. Фото помогает предположить название места. ')+(narrator.cloud?t('Озвучка создаётся облачным сервисом.'):t('Озвучка использует голос вашего устройства.'));$('photo-note').textContent=t('Выберите фото. Оно отправится только после нажатия «Узнать».');$('identify-photo').disabled=!state.vision||!state.photo;if(state.selected)renderStory();translateDiscovery(discoveryToken);translateLibrary()}}catch{/* Static hosting intentionally has no AI server. */}finally{clearTimeout(timer)}}
 const configReady=config();
+configReady.then(()=>restoreTour());
 renderPlaces();updateSaveButton();loadNearby();
 window.addEventListener('pagehide',()=>{narrator.stop();recognition?.abort();placeController?.abort();answerController?.abort();searchController?.abort();photoController?.abort();if(state.photoUrl)URL.revokeObjectURL(state.photoUrl)});
 
