@@ -203,7 +203,7 @@ Modify `server/observability.mjs`, `server/diagnostics.mjs`, `scripts/ops-probe.
 - [x] Operations `kuskovo-tour-test`: фиксированный placeRef wikipedia/ru/173387, ru; research → overview + первые 3 подтверждённые темы ПОСЛЕДОВАТЕЛЬНО; максимум 4 search calls и 1 plan + 4*5 chapter model calls; TTS только первый fragment overview. Вывести лишь число глав, слов, источников, reasons, timings, estimated cost если usage известен. Нельзя вывести ключи, тексты или весь ответ модели.
 - [x] `tour-fixtures-test` без сети: Белорусский вокзал, бедный объект, иностранный объект; запуск в CI. Реальная проверка иностранных мест отдельным запуском, не на каждый deploy.
 - [x] Существующие реальные probes не получают произвольный URL/model/prompt из inputs. Operations choice, validator и tests обновить совместно.
-- [ ] npm test; monitoring smoke; PR/CI/Deploy; запустить один kuskovo-tour-test, проанализировать результат. Если fail — исправить конкретный слой, не повышать лимиты и не отключать проверку.
+- [x] npm test; monitoring smoke; PR/CI/Deploy; запустить один kuskovo-tour-test, проанализировать результат. Если fail — исправить конкретный слой, не повышать лимиты и не отключать проверку.
 
 Task 8 probe ruling: fixed Operations uses internal `start(...,{fresh:true})` so every acceptance run exercises research/planning/model/review even if an owner tour is cached. Existing owner tours are retained under the same cap/TTL; successful probe chapters are available through the regular owner API. The HTTP contract cannot request fresh generation.
 
@@ -211,13 +211,13 @@ Task 8 implementation ruling: playback payload adds a UUID `attemptId` so first_
 
 ## Task 9 — Проверка работающей экскурсии
 
-- [ ] Убедиться, что main CI и Deploy успешны для точного SHA. Запустить Operations diagnose. Проверить место на диске и размер source DB через существующую диагностику; при нехватке места разобраться с её причиной, а не добавлять переключатель функции.
-- [ ] Выполнить probe задачи 8 на выложенной версии. Зафиксировать run URL, revision, точные pass/fail, число источников/глав и стоимость из usage (если цены неизвестны — токены/вызовы, не придумывать рубли).
+- [x] Убедиться, что main CI и Deploy успешны для точного SHA. Запустить Operations diagnose. Проверить место на диске и размер source DB через существующую диагностику; при нехватке места разобраться с её причиной, а не добавлять переключатель функции.
+- [x] Выполнить probe задачи 8 на выложенной версии. Зафиксировать run URL, revision, точные pass/fail, число источников/глав и стоимость из usage (если цены неизвестны — токены/вызовы, не придумывать рубли).
 - [ ] Проверить /api/config и экскурсию в авторизованной сессии. Отдельных ручных действий для включения от владельца не требуется.
 - [ ] Ручная приёмка Chrome Android: открыть Кусково → обзор → продолжить → выбрать другую тему → pause → reload → resume; отдельная проверка истёкшей сессии. Не объявлять проверку на устройстве успешной по одному Playwright.
 - [ ] Цели: обзор + минимум 3 уникальные проверенные темы; глава не повторяет предыдущую; нет разрывов исходных абзацев; права/атрибуция доступны. Первый звук после готового текста ориентир p95<8s, gap при готовом prefetch<1s; это измеряемые цели, а не гарантии провайдера.
-- [ ] Прогнать бедный объект: обзор/insufficient без искусственных глав; другой язык: правильный язык рассказа; подмена названия: источник другого объекта отклоняется.
-- [ ] При критической регрессии использовать существующий rollback на предыдущую рабочую версию приложения. Миграции additive, таблицы и готовые главы не удалять. Документировать в docs/operations.md.
+- [x] Прогнать бедный объект: обзор/insufficient без искусственных глав; другой язык: правильный язык рассказа; подмена названия: источник другого объекта отклоняется.
+- [x] При критической регрессии использовать существующий rollback на предыдущую рабочую версию приложения. Миграции additive, таблицы и готовые главы не удалять. Документировать в docs/operations.md.
 
 ## Порядок работы Sol и отчётность
 
@@ -256,3 +256,24 @@ Chapter producer wire contract is now `{language,segments:[{text,evidenceIds}]}`
 Task 9 planner follow-up: PR #73 merged `2a3da2ab1cf9b36bab45d8d88ac8104bfece91f6`; main CI `41201364549`, Deploy `41201436166`, automatic diagnose `41201474649` succeeded. Source DB 1,355,776 bytes; free disk 23,053,250,560 / 42,090,168,320 bytes. [Fresh real probe 41201539753](https://github.com/pastukhov/Waystory/actions/runs/41201539753) confirmed segment composition and whole-text overview review succeed (12,696 ms), then stopped at `insufficient_topics` before themes. Three calls, 39,220 input / 2,851 output tokens, complete usage, same five permitted documents / 28,856 characters, zero searches/pages and no TTS. Existing events cannot establish whether topic scarcity came from rejected output or available/limited decisions; do not infer a specific rejecting predicate from that run.
 
 Planner producer references now use the same request-scoped `e1`, `e2`, … contract with a known-reference schema enum, mapping back before canonical validation and unchanged topic ID computation. Original duplicate-reference deduplication, sorted canonical IDs, six-topic cap, place-scope requirement, summary bounds and meaningful available/limited decisions are preserved. Poor material may still yield no themes; the implementation never forces three or relabels a limited theme. One plan call / 2,500 tokens and all other provider/source/budget settings remain unchanged. New safe admission diagnostics expose candidate/admitted/available/limited/rejected counts and fixed enum rejection counts (malformed topic, invalid title/summary/status/reason, missing evidence, unknown reference, missing place, duplicate topic, cap). No titles, source/model text or reference values are emitted. An insufficient-topics probe now reports admitted availability counts. These diagnostics describe the new run only, without claiming to recover the prior model response.
+
+
+## Final server acceptance — 2026-10-31
+
+**Passed server-side; physical-device acceptance remains open.** Production code `b0b5b8ed630cde9d6fa4b4caacbc62569ea72f73`, PR #74. Main CI `41202083093`, Deploy `41202164920`, diagnose `41202202578`: successful. Full suite: 512 tests. Exact implementation heads were reviewed by Astra and root.
+
+The fresh, paid [Kuskovo probe 41202256095](https://github.com/pastukhov/Waystory/actions/runs/41202256095) succeeded on that revision. It exercised actual research, planner, generator, canonical evidence mapping, whole-text reviewer, owner quota accounting, persistent store and first-fragment TTS. It did not reuse a cached tour.
+
+- Research: five permitted documents, 28,856 characters, zero external search/page calls in this run.
+- Plan: five candidates, five admitted, five available, zero limited or rejected.
+- Four ready chapters: overview 710 words / 304 estimated seconds; themes 182 / 78, 488 / 209, and 287 / 123 respectively. Total 1,667 words, 714 estimated seconds (about 12 minutes). No two-hour claim.
+- Every ready chapter passed whole-text grounding and duplicate checks. These checks reduce risk; they are not a human factual audit.
+- The overview first exceeded the hard text bound; the existing bounded retry succeeded. Its final 710 words exceed the rough 120–220-word overview target. This length mismatch is an explicit remaining product-quality limitation, not hidden as a 1–2-minute overview.
+- First overview audio fragment: 1,034,880 bytes generated in 7,162 ms. This is one synthesis sample, not audible-device start time, p95, full audio duration or an interchapter-gap measurement.
+- Usage: 11 model calls (one plan, five chapter completions, five reviews including a technical repair); 103,616 input and 7,435 output tokens; no missing usage. Prices were not independently verified, so no monetary cost is asserted. Total probe elapsed 65,369 ms. Paid reruns stopped after success.
+- Storage: source DB 1,486,848 bytes; free disk 23,050,694,656 of 42,090,168,320 bytes. No cleanup performed.
+- Durable evidence: https://github.com/pastukhov/Waystory/pull/74#issuecomment-6543517420 . Passing tour is retained in the ordinary owner's store.
+
+Remaining unchecked Task 9 items are intentional: no authenticated owner production browser/session or physical Android was available to the implementation agents. RU/EN Playwright flows passed, but do not establish physical-device audio, live p95 or live interchapter gaps. The combined goals checkbox stays open for these measurements. Offline fixtures cover a sparse object, foreign-language evidence and wrong-object rejection; live global coverage is not established by Kuskovo alone.
+
+Official audio guide limitation: the supplied palace guide https://www.izi.travel/ru/6e02-muzey-usadba-kuskovo-dvorec/ru is known from the owner's QR. Generic discovery of the museum visitor section was fixed in PR #64; automatic recovery of that exact palace URL from the current official website was not demonstrated. The real acceptance above used permitted research documents, not copied third-party audio or an asserted right to republish the official guide.
