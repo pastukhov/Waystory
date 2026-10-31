@@ -16,13 +16,14 @@ export function createSearchProvider({db,env=process.env,fetchFn=fetch,now=Date.
  if(!order.length||order.some(id=>!Object.hasOwn(adapters,id)))throw Error('Invalid web search provider order');
  const timeoutMs=Math.max(1,integer(env.WEB_SEARCH_TIMEOUT_MS,15000,60000)),providerTimeoutMs=Math.max(1,integer(env.WEB_SEARCH_PROVIDER_TIMEOUT_MS,6000,30000));
  const configuredEngines=order.filter(id=>adapters[id].configured),enabled=configuredEngines.length>0&&maxCalls>0;
- return {enabled,configuredEngines,async searchCandidates(context,{signal,limit=8}={}){
+ return {enabled,configuredEngines,async searchCandidates(context,{signal,limit=8,querySuffix='',maxProviderCalls=Infinity}={}){
   signal?.throwIfAborted();
   if(!enabled)return {candidates:[],outcomes:[{provider:'global-web',status:'disabled',reason:'not_configured'}],calls:0};
   limit=Math.max(1,Math.min(8,Number.isFinite(limit)?Math.floor(limit):8));
   const candidates=[],outcomes=[];let calls=0;
+  const callLimit=Number.isSafeInteger(maxProviderCalls)&&maxProviderCalls>=0?maxProviderCalls:maxProviderCalls===Infinity?Infinity:0;
   const deadline=AbortSignal.timeout(timeoutMs),combined=signal?AbortSignal.any([signal,deadline]):deadline;
-  const query=[[...new Set(context.names||[])].slice(0,2).join(' / '),context.locality,context.countryCode].filter(Boolean).join(' ');
+  const query=[[...new Set(context.names||[])].slice(0,2).join(' / '),context.locality,context.countryCode,String(querySuffix).trim().slice(0,100)].filter(Boolean).join(' ');
   const outcome=(engine,status,reason,extra={})=>outcomes.push({provider:'global-web',engine,status,reason,...extra});
   const failure=(engine,error,start,partial=false)=>{
    const reason=[401,403].includes(error.httpStatus)?'access_denied':sourceReason(error);
@@ -39,6 +40,7 @@ export function createSearchProvider({db,env=process.env,fetchFn=fetch,now=Date.
    if(!adapter.configured){outcome(engine,'disabled','not_configured');continue}
    const cooldown=cooldowns.get(engine);
    if(cooldown?.until>now()){outcome(engine,'unavailable',cooldown.reason,{cooldown:true,...(cooldown.httpStatus?{httpStatus:cooldown.httpStatus}:{})});continue}
+   if(calls>=callLimit){outcome(engine,'budget-exhausted','budget_exhausted');break}
    if(!budget.reserveProviderCall({provider:engine})){outcome(engine,'budget-exhausted','budget_exhausted');continue}
    calls++;const start=now();
    try{
@@ -47,7 +49,7 @@ export function createSearchProvider({db,env=process.env,fetchFn=fetch,now=Date.
     cooldowns.delete(engine);outcome(engine,candidates.length?'ok':'empty',candidates.length?null:'no_match',{durationMs:Math.max(0,now()-start),documentCount:candidates.length});
    }catch(error){signal?.throwIfAborted();if(!failure(engine,error,start)||combined.aborted)break;continue}
    if(candidates.length&&adapter.extract&&!combined.aborted){
-    if(!budget.reserveProviderCall({provider:engine}))outcome(engine,'budget-exhausted','budget_exhausted');
+    if(calls>=callLimit||!budget.reserveProviderCall({provider:engine}))outcome(engine,'budget-exhausted','budget_exhausted');
     else{calls++;const extractStart=now();try{
      const results=await invoke(attempt=>adapter.extract(candidates,{signal:attempt}));
      for(const result of results.slice(0,3)){const candidate=candidates.find(c=>c.url===candidateUrl(result.url));if(!candidate||typeof result.raw_content!=='string')continue;candidate.snippet=result.raw_content.slice(0,6000);const coordinates=coordinatesFromMap(candidate.snippet);if(coordinates)candidate.identitySignals.coordinates=coordinates}
