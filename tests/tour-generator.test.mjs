@@ -69,11 +69,11 @@ test('missing place evidence is insufficient without paid work; deadline abort s
 });
 function fixture(overrides={}){
  const db=new DatabaseSync(':memory:'),store=createTourStore({db}),jobs=createTourJobs({store});let calls=0;
- const service=createTours({store,jobs,research:async()=>({documents:docs,spans,fingerprint:'fixture'}),resolvePlace:async()=>place,complete:async request=>{calls++;return request.schema.name==='tour_plan'?{topics:spans.map((s,i)=>({title:['История','Парк','Коллекции'][i],summary:'Тема экскурсии.',evidenceIds:[s.id],status:'available',reason:null}))}:wireAnswer()},review:supported,consume:async()=>{},...overrides});
+ const service=createTours({store,jobs,research:async()=>({documents:docs,spans,fingerprint:'fixture'}),resolvePlace:async()=>place,complete:async request=>{calls++;return request.schema.name==='tour_plan'?{topics:JSON.parse(request.messages[1].content).spans.map((s,i)=>({title:['История','Парк','Коллекции'][i],summary:'Тема экскурсии.',evidenceIds:[s.id],status:'available',reason:null}))}:wireAnswer()},review:supported,consume:async()=>{},...overrides});
  return {db,store,jobs,service,calls:()=>calls,async close(){await jobs.shutdown();db.close()}};
 }
 test('service exposes plan before overview; only overview starts automatically after plan releases slot',async()=>{
- let finish;const hold=new Promise(resolve=>{finish=resolve});const f=fixture({complete:async request=>request.schema.name==='tour_plan'?{topics:spans.map((s,i)=>({title:['История','Парк','Коллекции'][i],summary:'Тема экскурсии.',evidenceIds:[s.id],status:'available',reason:null}))}:hold});
+ let finish;const hold=new Promise(resolve=>{finish=resolve});const f=fixture({complete:async request=>request.schema.name==='tour_plan'?{topics:JSON.parse(request.messages[1].content).spans.map((s,i)=>({title:['История','Парк','Коллекции'][i],summary:'Тема экскурсии.',evidenceIds:[s.id],status:'available',reason:null}))}:hold});
  try {const start=await f.service.start('owner',{placeId:place.id,language:'ru'});await f.jobs.drain();await new Promise(resolve=>setImmediate(resolve));const tour=f.service.get('owner',start.tourId);assert.equal(tour.status,'ready');assert.equal(tour.topics.length,3);assert.equal(tour.chapters.length,4);assert.equal(tour.chapters[0].topicId,'overview');assert.equal(tour.chapters[0].status,'generating');assert.ok(tour.chapters.slice(1).every(c=>c.status==='planned'));assert.equal(f.service.get('other',start.tourId),null);finish(wireAnswer());await f.jobs.drain();const cached=await f.service.chapter('owner',start.tourId,'overview');assert.equal(cached.status,200);
  }finally{finish(wireAnswer());await f.close()}
 });
@@ -88,7 +88,7 @@ test('model adapter verifies finish reason and stops auth failures without retri
  const model=createTourModel({env:{AI_PROVIDER:'routerai',ROUTERAI_API_KEY:'fixture'},fetchFn:async()=>Response.json({choices:[{finish_reason:'length',message:{content:JSON.stringify(wireAnswer())}}]})});await assert.rejects(model.complete({messages:[],schema:{name:'chapter',schema:{}},maxTokens:4500}),{code:'provider_error'});
 });
 test('service owns a shared five-call budget including technical reviewer repair and regeneration',async()=>{
- let posts=0,charges=0;const responses=[{topics:[{title:'История',summary:'История дворца.',evidenceIds:[spans[0].id],status:'available',reason:null}]},wireAnswer(),null,{supported:false,issues:[{claimIndex:0,reason:'contradiction'}]},wireAnswer(),{supported:true,issues:[]}];
+ let posts=0,charges=0;const responses=[{topics:[{title:'История',summary:'История дворца.',evidenceIds:['e1'],status:'available',reason:null}]},wireAnswer(),null,{supported:false,issues:[{claimIndex:0,reason:'contradiction'}]},wireAnswer(),{supported:true,issues:[]}];
  const model=createTourModel({env:{AI_PROVIDER:'routerai',ROUTERAI_API_KEY:'fixture'},fetchFn:async()=>{posts++;const next=responses.shift();return Response.json({choices:[{finish_reason:next===null?'length':'stop',message:{content:JSON.stringify(next)}}]})}});
  const f=fixture({...model,consume:async()=>{charges++}});try{await f.service.start('a',{placeId:place.id,language:'ru'});await f.jobs.drain();await new Promise(resolve=>setImmediate(resolve));await f.jobs.drain();assert.equal(posts,6);assert.equal(charges,6);const tour=f.store.findActive('a',place.id,'ru');assert.equal(tour.chapters[0].status,'ready')}finally{await f.close()}
 });
@@ -98,7 +98,7 @@ test('zero-TTL policy fails planning before any model call',async()=>{
 test('Kuskovo prepares overview and three distinct verified themes sequentially',async()=>{
  const outputs=['Кусково — музей.','Дворец построен в XVIII веке.','Парк украшен прудами.','В музее хранится керамика.'];let charges=0;
  const f=fixture({consume:async()=>{charges++},complete:async request=>{
-  if(request.schema.name==='tour_plan')return {topics:spans.map((s,i)=>({title:['История','Парк','Коллекции'][i],summary:'Тема экскурсии.',evidenceIds:[s.id],status:'available',reason:null}))};
+  if(request.schema.name==='tour_plan')return {topics:JSON.parse(request.messages[1].content).spans.map((s,i)=>({title:['История','Парк','Коллекции'][i],summary:'Тема экскурсии.',evidenceIds:[s.id],status:'available',reason:null}))};
   const payload=JSON.parse(request.messages[1].content),index=payload.topic.id==='overview'?0:spans.findIndex(s=>s.text===payload.spans[0].text)+1;
   return wireAnswer(outputs[index],payload.topic.evidenceIds.slice(0,1));
  }});

@@ -5,10 +5,10 @@ export async function runTourProbe({service,jobs,ownerId,placeId,language='ru',s
  const start=now(),result=await service.start(ownerId,{placeId,language},{fresh:true});
  const settle=async()=>{await jobs.drain();await new Promise(resolve=>setImmediate(resolve));await jobs.drain();return service.get(ownerId,result.tourId)};
  let tour=await settle();
- const fail=reason=>{report({probe:'tour-result',passed:false,reason,revision:process.env.WAYSTORY_REVISION||'unknown',durationMs:now()-start});return false};
+ const fail=(reason,details={})=>{report({probe:'tour-result',passed:false,reason,...details,revision:process.env.WAYSTORY_REVISION||'unknown',durationMs:now()-start});return false};
  if(tour?.status!=='ready')return fail(tour?.error?.code||'plan_failed');
  const selected=tour.topics.filter(t=>t.status==='available').slice(0,requiredThemes);
- if(selected.length<requiredThemes)return fail('insufficient_topics');
+ if(selected.length<requiredThemes)return fail('insufficient_topics',{topics:tour.topics.length,available:tour.topics.filter(t=>t.status==='available').length,limited:tour.topics.filter(t=>t.status==='limited').length});
  const chapters=[];
  for(const topicId of ['overview',...selected.map(t=>t.id)]){
   let chapter=tour.chapters.find(c=>c.topicId===topicId);
