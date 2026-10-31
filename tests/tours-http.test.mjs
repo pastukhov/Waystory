@@ -86,7 +86,7 @@ async function liveFixture(t,{holdPlan=false,limit=30,repair=false,policy='wikim
    if(holdPlan)await gate;
    result={topics:[{title:'История',summary:'История дворца.',evidenceIds:[payload.spans[0].id],status:'available',reason:null}]};
   }else if(name==='tour_chapter'){
-   const text='Дворец построен в XVIII веке.',ids=[payload.spans[0].id];result={language:'ru',text,evidenceIds:ids,claims:[{text,evidenceIds:ids}]};
+   const text='Дворец построен в XVIII веке.',ids=[payload.spans[0].id];result={language:'ru',segments:[{text,evidenceIds:ids}]};
   }else{reviewCalls++;result={supported:true,issues:[]};if(repair&&reviewCalls===1)finish='length'}
   return Response.json({choices:[{finish_reason:finish,message:{content:JSON.stringify(result)}}]});
  },logWriter:line=>logs.push(line)});

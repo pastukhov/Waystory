@@ -23,21 +23,20 @@ test('chapter producer uses bounded compact refs and maps to unchanged canonical
    const payload=JSON.parse(request.messages[1].content),properties=request.schema.schema.properties;
    assert.deepEqual(payload.spans.map(s=>s.id),['e1']);
    assert.deepEqual(payload.topic.evidenceIds,['e1']);
-   assert.deepEqual(properties.evidenceIds.items.enum,['e1']);
-   assert.deepEqual(properties.claims.items.properties.evidenceIds.items.enum,['e1']);
+   assert.deepEqual(properties.segments.items.properties.evidenceIds.items.enum,['e1']);
    for(const span of spans)assert.ok(!JSON.stringify(request).includes(span.id));
    assert.ok(!JSON.stringify(request).includes(topic.id));
-   return answer('Дворец построен в XVIII веке.',['e1']);
+   return wireAnswer('Дворец построен в XVIII веке.',['e1']);
   },review:async(value,evidence)=>{reviews++;assert.deepEqual(value.claims,answer().claims);assert.deepEqual(value.previousClaims,[{text:'Ранее подтверждено.',evidenceIds:[spans[2].id]}]);assert.deepEqual(evidence,[spans[0]]);return supported()}
  });
  assert.equal(c.status,'ready');assert.equal(reviews,1);assert.deepEqual(c.evidenceIds,[canonical]);assert.deepEqual(c.coveredFactKeys,[coveredFactKey(answer().claims[0])]);assert.equal(JSON.stringify(spans),snapshot);
 });
-test('compact evidence refs reject unknown, canonical injection, duplicate, subset and unlisted refs before review',async()=>{
- for(const bad of [answer('Факт.',['e2']),answer('Факт.',[spans[0].id]),answer('Факт.',['e1','e1']),answer('Факт.',[1]),{...answer('Факт.',['e1']),claims:[{text:'Факт.',evidenceIds:['e2']}]},answer('Факт.',['toString']),answer('Факт e1.',['e1'])]){
+test('compact evidence refs reject unknown, canonical injection, duplicate and spoken refs before review',async()=>{
+ for(const bad of [wireAnswer('Факт.',['e2']),wireAnswer('Факт.',[spans[0].id]),wireAnswer('Факт.',['e1','e1']),wireAnswer('Факт.',[1]),{...wireAnswer('Факт.',['e1']),segments:[{text:'Факт.',evidenceIds:['e2']}]},wireAnswer('Факт.',['toString']),wireAnswer('Факт e1.',['e1'])]){
   let reviews=0;const c=await generateChapter({place,language:'ru',topic,spans},{complete:async()=>bad,review:async()=>{reviews++;return supported()}});assert.equal(reviews,0);assert.equal(c.status,'failed');
  }
 });
-const wireAnswer=(text,ids=['e1'],language)=>answer(text,ids,language);
+const wireAnswer=(text='Дворец построен в XVIII веке.',ids=['e1'],language='ru')=>({language,segments:[{text,evidenceIds:ids}]});
 test('chapter uses only topic spans and previous verified claims, and calculates duration',async()=>{
  const chapter=await generateChapter({place,language:'ru',topic,spans,previousChapters:[{status:'ready',text:'PRIVATE FULL CHAPTER',claims:[{text:'Ранее подтверждено.',evidenceIds:[spans[2].id]}]}]}, {complete:async request=>{const payload=JSON.parse(request.messages[1].content);assert.deepEqual(payload.spans.map(s=>s.id),['e1']);assert.ok(!JSON.stringify(request).includes('PRIVATE FULL CHAPTER'));return wireAnswer()},review:supported});
  assert.equal(chapter.status,'ready');assert.equal(chapter.estimatedSeconds,2);assert.deepEqual(chapter.coveredFactKeys,[coveredFactKey(answer().claims[0])]);
@@ -55,8 +54,8 @@ test('reviewer rejects a semantic paraphrase and regeneration uses a different s
  const c=await generateChapter({place,language:'ru',topic,spans,previousChapters:[{status:'ready',claims:answer().claims}]},{complete:async request=>{generations++;if(generations===2)assert.match(JSON.stringify(request),/duplicate_claim/);return wireAnswer(generations===1?'Дворец возведён в восемнадцатом столетии.':'Кусково — музей.')},review:async value=>{reviews++;assert.deepEqual(value.previousClaims,answer().claims);return reviews===1?{outcome:'rejected',issues:[{claimIndex:0,reason:'duplicate_claim'}]}:supported()}});
  assert.equal(c.status,'ready');assert.equal(generations,2);assert.equal(reviews,2);assert.equal(c.text,'Кусково — музей.');
 });
-test('invalid structured output, language, IDs, claim coverage and spoken service IDs never become ready',async()=>{
- for(const bad of [{...wireAnswer(),language:'en'},wireAnswer('English prose with a wrong declared language.'),{...wireAnswer(),text:'x'.repeat(6001)},wireAnswer('Факт',['unknown']),{...wireAnswer(),claims:[]},{...wireAnswer(),claims:[{text:'Не содержится.',evidenceIds:['e1']}]},wireAnswer('Дворец '+spans[0].id)]){
+test('invalid structured output, language, segment bounds and spoken service IDs never become ready',async()=>{
+ for(const bad of [{...wireAnswer(),language:'en'},wireAnswer('English prose with a wrong declared language.'),wireAnswer('Ф'.repeat(6001)),wireAnswer('Факт',['unknown']),{language:'ru',segments:[]},{...wireAnswer(),extra:'unknown'},wireAnswer('Дворец '+spans[0].id)]){
  const c=await generateChapter({place,language:'ru',topic,spans},{complete:async()=>bad,review:()=>assert.fail('invalid before review')});assert.equal(c.status,'failed');
  }
 });
@@ -152,24 +151,19 @@ test('tour collector enriches wiki-only place with official identity and preserv
 test('JSON provider wire compact refs reach whole chapter review as canonical hashes',async()=>{
  const bodies=[],model=createTourModel({env:{AI_PROVIDER:'routerai',ROUTERAI_API_KEY:'fixture'},fetchFn:async(_url,options)=>{
   const body=JSON.parse(options.body);bodies.push(body);
-  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(body.response_format.json_schema.name==='tour_chapter'?answer('Дворец построен в XVIII веке.',['e1']):{supported:true,issues:[]})}}]});
+  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(body.response_format.json_schema.name==='tour_chapter'?wireAnswer('Дворец построен в XVIII веке.',['e1']):{supported:true,issues:[]})}}]});
  }});
  const c=await generateChapter({place,language:'ru',topic,spans},{complete:model.complete,review:model.review});
  assert.equal(c.status,'ready');assert.equal(bodies.length,2);
- assert.deepEqual(bodies[0].response_format.json_schema.schema.properties.evidenceIds.items.enum,['e1']);
+ assert.deepEqual(bodies[0].response_format.json_schema.schema.properties.segments.items.properties.evidenceIds.items.enum,['e1']);
  const reviewed=JSON.parse(bodies[1].messages[1].content);
  assert.deepEqual(reviewed.chapter.claims,answer().claims);assert.deepEqual(reviewed.spans,[spans[0]]);assert.equal(reviewed.chapter.text,c.text);
  assert.match(bodies[1].messages[0].content,/entire chapter/);
 });
 
-test('local references remain scoped to selected spans and preserve subset and union checks',async()=>{
- const wide={...topic,evidenceIds:[spans[0].id,spans[1].id]},text='Музей открыт.';
- for(const [ids,claims] of [[['e1'],[{text,evidenceIds:['e2']}]],[['e1','e2'],[{text,evidenceIds:['e1']}]],[['e1'],[{text,evidenceIds:['e1','e1']}]]]){
-  let reviews=0;const c=await generateChapter({place,language:'ru',topic:wide,spans},{complete:async()=>({language:'ru',text,evidenceIds:ids,claims}),review:async()=>{reviews++;return supported()}});
-  assert.equal(c.status,'failed');assert.equal(reviews,0);
- }
+test('local refs are scoped to selected spans and ordinary Type1 and E1 prose remains valid',async()=>{
  for(const text of ['The Type1 museum is open.','The E1 route reaches the museum.']){
- const c=await generateChapter({place,language:'en',topic:{...topic,evidenceIds:[spans[1].id]},spans},{complete:async()=>answer(text,['e1'],'en'),review:supported});
+ const c=await generateChapter({place,language:'en',topic:{...topic,evidenceIds:[spans[1].id]},spans},{complete:async()=>wireAnswer(text,['e1'],'en'),review:supported});
  assert.equal(c.status,'ready');assert.deepEqual(c.evidenceIds,[spans[1].id]);
  }
 });
