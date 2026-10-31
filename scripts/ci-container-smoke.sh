@@ -37,6 +37,9 @@ curl --fail --silent --show-error --max-time 10 http://127.0.0.1:18080/ > "$smok
 test -s "$smoke_dir/response.html"
 docker compose -p "$compose_project" exec -T waystory node --input-type=module <<'JS'
 import assert from 'node:assert/strict';
+import {runTourFixtures} from './server/tours/fixtures.mjs';
+assert.equal(await runTourFixtures(),true);
+await import('./server/tours/operations-probe.mjs');
 import {existsSync,writeFileSync,readFileSync} from 'node:fs';
 writeFileSync('/app/data/smoke','persistent');
 assert.equal(readFileSync('/app/data/smoke','utf8'),'persistent');

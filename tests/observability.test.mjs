@@ -119,3 +119,11 @@ test('review diagnostics carry revision and bounded reasons but exclude raw mode
  const detail=logs.map(JSON.parse).find(e=>e.event==='waystory_review_detail');assert.equal(detail.reason,'model_rejected');assert.equal(detail.attempt,2);assert.deepEqual(detail.blockIndexes,[0]);assert.deepEqual(detail.modelReasons,['contradiction']);assert.equal(detail.revision,'waystory:abcdef');assert.ok(detail.timestamp);
  assert.doesNotMatch(logs.join('\n'),/PRIVATE|SECRET/);assert.deepEqual(safeLogLine(JSON.stringify(detail)),detail);
 });
+
+test('tour metrics have bounded labels and sanitized correlated diagnostic logs',()=>{
+ const logs=[],o=createObservability({env:{},write:line=>logs.push(line)});
+ o.record('tour_job',{stage:'review',outcome:'rejected',reason:'wrong_object',durationMs:500,tourId:'459fdcd9-e879-4ea2-9a17-65116befea37',chapterId:'overview',text:'PRIVATE_SECRET'});
+ o.record('tour_job',{stage:'attacker',outcome:'attacker',reason:'PRIVATE_SECRET'});
+ o.record('tour_playback',{type:'first_audio',durationMs:200});o.record('tour_storage',{bytes:1234});
+ const metrics=o.render();assert.match(metrics,/waystory_tour_jobs_total\{stage="review",outcome="rejected"\} 1/);assert.match(metrics,/waystory_tour_review_failures_total\{reason="wrong_object"\} 1/);assert.match(metrics,/waystory_tour_storage_bytes 1234/);assert.match(metrics,/waystory_tour_playback_duration_seconds_count\{type="first_audio"\} 1/);assert.doesNotMatch(metrics,/attacker|459fdcd9/);assert.doesNotMatch(logs.join(''),/PRIVATE_SECRET/);assert.match(logs.join(''),/459fdcd9/);
+});

@@ -8,3 +8,8 @@ test('review export retains allowlisted failure details and excludes secrets',()
  const result=safeLogLine(JSON.stringify({event:'waystory_review_detail',requestId:'11111111-1111-1111-1111-111111111111',reason:'incomplete_response',finishReason:'length',evidenceFailures:[{index:0,reason:'quote_not_found',quote:'private'},{index:1,reason:'secret'}],tokenCounts:{prompt:10,completion:1800,total:1810,secret:'private'},raw:'private'}));
  assert.equal(result.finishReason,'length');assert.deepEqual(result.evidenceFailures,[{index:0,reason:'quote_not_found'}]);assert.deepEqual(result.tokenCounts,{prompt:10,completion:1800,total:1810});assert.ok(!JSON.stringify(result).includes('private'));assert.ok(!JSON.stringify(result).includes('secret'));
 });
+
+test('tour correlation export reconstructs identifiers and enum reasons without source content',()=>{
+ const input={event:'waystory_tour_job',requestId:'459fdcd9-e879-4ea2-9a17-65116befea37',tourId:'459fdcd9-e879-4ea2-9a17-65116befea38',chapterId:'overview',stage:'review',outcome:'rejected',reason:'wrong_object',durationMs:12,text:'PRIVATE_SOURCE',claims:['PRIVATE_CLAIM'],email:'owner@example.com',token:'PRIVATE_TOKEN'};
+ const result=safeLogLine(JSON.stringify(input));assert.equal(result.reason,'wrong_object');assert.equal(result.tourId,input.tourId);assert.doesNotMatch(JSON.stringify(result),/PRIVATE|owner@example/);
+});

@@ -71,3 +71,13 @@ test('only current and next audio blobs are retained and stop revokes URLs',asyn
 test('oversized audio is rejected before retaining a blob',async()=>{const {n,errors}=setup(async()=>new Response(new Uint8Array(4*1024*1024+1)));n.play([{id:'a',text:'First'}]);await tick();await tick();assert.equal(n.objectUrl,undefined);assert.equal(errors.length,1);n.stop()});
 test('continuous chapter lookahead reuses first audio without exceeding two blobs',async()=>{const bodies=[];const {n,audio}=setup(async(url,o)=>{bodies.push(JSON.parse(o.body).text);return new Response('audio')});const first={id:'a',text:'First'},second={id:'b',text:'Second'};n.play([first]);await tick();await n.prepareNext(second);assert.deepEqual(bodies,['First','Second']);audio.onended();n.play([second]);await tick();assert.deepEqual(bodies,['First','Second']);assert.equal(n.state,'playing');n.stop()});
 test('next chapter audio waits until the final fragment and can be canceled',async()=>{const bodies=[];const {n,audio}=setup(async(url,o)=>{bodies.push(JSON.parse(o.body).text);return new Response('audio')});n.play([{id:'a',text:'word '.repeat(450)}]);await tick();n.prepareNext({id:'b',text:'Future chapter'});await tick();assert.equal(bodies.length,2);audio.onended();await tick();assert.equal(bodies.length,3);assert.equal(bodies.at(-1),'word '.repeat(450).trim().slice(2000).trim());n.clearPreparedNext();audio.onended();await tick();assert.equal(bodies.includes('Future chapter'),false);n.stop()});
+
+test('cloud playing state waits for confirmed audio start and ignores stopped or paused pending play',async()=>{
+ let resolve;const {n,audio}=setup(async()=>new Response('audio'));const states=[];n.onState=state=>states.push(state);audio.play=()=>new Promise(r=>resolve=r);
+ n.play([{id:'a',text:'Тест'}]);await tick();assert.equal(states.includes('playing'),false);resolve();await tick();assert.equal(n.state,'playing');
+ n.play([{id:'b',text:'Тест'}]);await tick();n.pause();resolve();await tick();assert.equal(n.state,'paused');
+ n.resume();n.stop();resolve();await tick();assert.equal(n.state,'idle');
+});
+test('denied audio play does not report playing state',async()=>{
+ const {n,audio}=setup(async()=>new Response('audio'));const states=[];n.onState=state=>states.push(state);audio.play=async()=>{throw Object.assign(new Error('denied'),{name:'NotAllowedError'})};n.play([{id:'a',text:'Тест'}]);await tick();assert.equal(states.includes('playing'),false);assert.equal(n.state,'paused');n.stop();
+});

@@ -12,3 +12,8 @@ test('Grafana dashboard uses selectable datasource and bounded app metrics',()=>
 test('scrape example uses a credential file and rules have traffic/budget guards',()=>{
  const scrape=readFileSync(new URL('../monitoring/vmagent.yml',import.meta.url),'utf8'),rules=readFileSync(new URL('../monitoring/alerts.yml',import.meta.url),'utf8'),compose=readFileSync(new URL('../compose.production.yaml',import.meta.url),'utf8');assert.match(scrape,/credentials_file:/);assert.doesNotMatch(scrape,/credentials:/);assert.match(scrape,/scheme: http/);assert.match(scrape,/REPLACE_WITH_WAYSTORY_VPN_IP:5173/);assert.match(compose,/ports:\s*\n\s*- "0\.0\.0\.0:5173:5173"/);assert.match(rules,/WaystoryProviderAccessDenied/);assert.match(rules,/waystory_tavily_daily_calls_limit.*> 0/);assert.match(rules,/sum by \(job, instance\).*waystory_http_requests_total/);assert.doesNotMatch(rules,/placeId|requestId/);
 });
+
+test('tour panels cover outcomes, reasons, latency, client timings, speech auth and storage',()=>{
+ const dashboard=JSON.parse(readFileSync(new URL('../monitoring/grafana-dashboard.json',import.meta.url)));
+ for(const title of ['Tour jobs by outcome','Tour review reasons','Tour duration p50','Tour duration p95','Speech authorization 401','Speech upstream 5xx','Tour first audio and gap p95','Tour storage logical bytes'])assert.ok(dashboard.panels.some(p=>p.title===title),title);
+});

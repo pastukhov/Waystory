@@ -153,3 +153,15 @@ test('shutdown rejects a preexisting partial POST before reservation or paid wor
  });
  assert.equal(await response,503);await closed;assert.equal(f.calls.length,0);
 });
+
+test('playback telemetry validates owner, Origin, enums, attempt deduplication and rate without AI quota',async t=>{
+ const f=await fixture(t),path='/api/tours/'+id+'/playback-events',body={chapterId:'overview',attemptId:'459fdcd9-e879-4ea2-9a17-65116befea38',type:'first_audio',durationMs:123};
+ assert.equal((await f.request(path,'POST',body,{cookie:''})).status,401);
+ assert.equal((await f.request(path,'POST',body,{origin:'https://evil.test'})).status,403);
+ assert.equal((await f.request(path,'POST',body,{cookie:'other'})).status,404);
+ for(const change of [{type:'arbitrary'},{durationMs:-1},{durationMs:120001},{durationMs:'1'},{code:'secret'},{attemptId:'private'},{chapterId:topic},{text:'secret'}])assert.equal((await f.request(path,'POST',{...body,...change})).status,400);
+ assert.equal((await f.request(path,'POST',body)).status,200);
+ assert.equal((await f.request(path,'POST',body)).body.recorded,false);
+ for(let i=0;i<28;i++)assert.equal((await f.request(path,'POST',{...body,type:'playback_error',code:'provider_error'})).status,200);
+ assert.equal((await f.request(path,'POST',body)).status,429);
+});

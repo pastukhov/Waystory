@@ -13,7 +13,7 @@ export function publicJobError(error) {
  const codes=['auth_required','budget_exhausted','source_unavailable','insufficient_evidence','verification_failed','provider_timeout','provider_error','busy'];
  const code=codes.includes(error?.code)?error.code:'provider_error';
  const safe=tourError(code);
- return {code,message:safe.message,retryable:typeof error?.retryable==='boolean'?error.retryable:safe.retryable,diagnosticId:safe.diagnosticId};
+ return {code,message:safe.message,retryable:typeof error?.retryable==='boolean'?error.retryable:safe.retryable,diagnosticId:/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(error?.diagnosticId||'')?error.diagnosticId:safe.diagnosticId};
 }
 const timedOut=()=>publicJobError(tourError('provider_timeout'));
 const emptyChapter=topicId=>({id:topicId,topicId,status:'planned',text:null,evidenceIds:[],claims:[],coveredFactKeys:[],estimatedSeconds:0,error:null});
