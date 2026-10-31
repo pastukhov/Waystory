@@ -25,6 +25,7 @@ import {createTourStore} from './tours/store.mjs';
 import {createTourJobs} from './tours/jobs.mjs';
 import {createTourResearch} from './tours/research.mjs';
 import {createTours,createTourModel,createTourCollector} from './tours/service.mjs';
+import {createPlaybackEvents} from './tours/playback.mjs';
 import {handleTourRoute} from './tours/routes.mjs';
 const root=fileURLToPath(new URL('../dist/',import.meta.url));
 const mime={'.html':'text/html; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
@@ -59,14 +60,15 @@ export function createApp(options={}){
   research:createTourResearch({collect:createTourCollector({collect:(place,options)=>places.collect(place,options),request:sourceRequest}),search:env.GLOBAL_SOURCE_DISCOVERY_ENABLED==='true'?globalSearch:null}),
   complete:tourModel.complete,review:tourModel.review,resolvePlace:async id=>store.getById(id),consume:ownerId=>auth.consume({id:ownerId},'ai')
  }):null);
+ const playbackEvents=createPlaybackEvents();
  const toursAvailable=guide.enabled&&!!tourStore&&!!tours;
  const server=http.createServer((req,res)=>observability.request(req,res,async()=>{
  const json=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data))};
  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: https://upload.wikimedia.org; media-src 'self' blob:; connect-src 'self' https://*.wikipedia.org; object-src 'none'; base-uri 'self'");
  let pathname;try{pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname)}catch{return json(400,{error:'Неверный адрес.'})}
- if(pathname==='/metrics'){const access=observability.authorize(req.headers.authorization);if(access==='disabled')return json(404,{error:'Not found'});if(access!=='allowed'){res.setHeader('WWW-Authenticate','Bearer');return json(401,{error:'Unauthorized'})}if(req.method!=='GET')return json(405,{error:'Method not allowed'});res.writeHead(200,{'Content-Type':'text/plain; version=0.0.4; charset=utf-8','Cache-Control':'no-store'});return res.end(observability.render())}
+ if(pathname==='/metrics'){const access=observability.authorize(req.headers.authorization);if(access==='disabled')return json(404,{error:'Not found'});if(access!=='allowed'){res.setHeader('WWW-Authenticate','Bearer');return json(401,{error:'Unauthorized'})}if(req.method!=='GET')return json(405,{error:'Method not allowed'});observability.record('tour_storage',{bytes:tourStore?.stats().bytes||0});res.writeHead(200,{'Content-Type':'text/plain; version=0.0.4; charset=utf-8','Cache-Control':'no-store'});return res.end(observability.render())}
  const redirect=(location,cookies)=>{res.writeHead(303,{'Location':location,'Cache-Control':'no-store','Referrer-Policy':'no-referrer',...(cookies?{'Set-Cookie':cookies}:{})});res.end()};
- if(await handleTourRoute(req,res,{auth,tours,settings:{available:toursAvailable},readJson,json}))return;
+ if(await handleTourRoute(req,res,{auth,tours,playbackEvents,settings:{available:toursAvailable},readJson,json}))return;
  if(pathname.startsWith('/api/places/')){
   if(!settings.enabled||!places)return json(503,{error:'Поиск по дополнительным источникам пока выключен.'});
   const controller=new AbortController();req.once?.('aborted',()=>controller.abort());res.once?.('close',()=>{if(!res.writableEnded)controller.abort()});

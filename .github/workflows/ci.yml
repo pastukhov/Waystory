@@ -34,6 +34,7 @@ jobs:
         run: |
           npm run check
           npm test
+          node scripts/tour-fixtures.mjs
           bash tests/image-state.test.sh
           for file in dist/*.mjs scripts/*.mjs tests/*.mjs; do
             node --check "$file"

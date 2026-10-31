@@ -92,8 +92,8 @@ export class CloudNarrator extends Narrator {
   };next();
  }
  async startAudio(token){
-  this.setState('playing');
-  try{await this.audio.play()}catch(e){if(token!==this.epoch)return;if(e.name==='NotAllowedError'){this.setState('paused');this.onError('Браузер просит ещё одно нажатие: нажмите «Продолжить», чтобы включить звук.')}else{this.stop();this.onError('Не удалось включить звук. Попробуйте ещё раз.')}}
+  this.setState('loading');
+  try{await this.audio.play();if(token!==this.epoch)return;if(this.state==='paused'){this.audio.pause();return}this.setState('playing')}catch(e){if(token!==this.epoch)return;if(e.name==='NotAllowedError'){this.setState('paused');this.onError('Браузер просит ещё одно нажатие: нажмите «Продолжить», чтобы включить звук.')}else{this.stop();this.onError('Не удалось включить звук. Попробуйте ещё раз.')}}
  }
  pause(){if(this.local)return this.local.pause();if(!this.cloud)return super.pause();if(['playing','loading'].includes(this.state)){this.audio.pause();this.setState('paused')}}
  resume(){if(this.localPending){this.startLocal(this.localPending);return}if(this.local)return this.local.resume();if(!this.cloud)return super.resume();if(this.state==='paused'){if(this.ready)this.startAudio(this.epoch);else this.setState('loading')}}

@@ -3,6 +3,8 @@ import {speechTextHash,speechChunkCount,SPEECH_CHUNKING_VERSION} from './speech.
 // A selection owns all pending work. Audio completion, not preparation, advances it.
 export function createTourPlayer({client,narrator,saveProgress=(id,value)=>client.saveProgress(id,value),onChange=()=>{},onAuthRequired=()=>{},onError=()=>{},onBackup=()=>{},onChapterComplete=()=>{},now=Date.now}={}){
  let tour=null,selected=null,cursor=null,continuous=false,epoch=0,controller=null,preview=null,authPending=false,authNotified=false,playing=false,lastSaved=0,disposed=false;
+ let attempt=null,transitionAt=null;
+ function playback(type,extra={}){if(!attempt||!selected||!client.playbackEvent)return;try{Promise.resolve(client.playbackEvent(tour.id,{chapterId:selected.id,attemptId:attempt.id,type,...extra})).catch(()=>{})}catch{}}
  let completed=new Set(),saveQueue=Promise.resolve();
  const prior={onComplete:narrator.onComplete,onProgress:narrator.onProgress,onState:narrator.onState,onAuthRequired:narrator.onAuthRequired,onError:narrator.onError};
  const snapshot=()=>({tour,selected,continuous,cursor,state:playing?narrator.state:'idle',completedChapterIds:[...completed]});
@@ -25,14 +27,14 @@ export function createTourPlayer({client,narrator,saveProgress=(id,value)=>clien
   try{const value=await prepare(topicId,signal,token,{retry});if(token!==epoch||signal.aborted||!value)return;selected=value;change();if(value.status!=='ready')return;
    const textHash=speechTextHash(value.text),valid=fromCursor&&cursor?.chapterId===value.id&&cursor.textHash===textHash&&cursor.chunkingVersion===SPEECH_CHUNKING_VERSION;
    cursor={chapterId:value.id,chunkIndex:valid?cursor.chunkIndex:0,offsetSeconds:valid?cursor.offsetSeconds:0,textHash,chunkingVersion:SPEECH_CHUNKING_VERSION};
-   narrator.language=tour.language;playing=true;narrator.play([{id:value.id,title:tour.topics.find(t=>t.id===topicId)?.title||'overview',text:value.text}],{...cursor,blockId:value.id});change();prefetch(token);
+   attempt={id:globalThis.crypto.randomUUID(),first:false,gap:false,started:now(),loading:null,boundary:advance?transitionAt:null};narrator.language=tour.language;playing=true;narrator.play([{id:value.id,title:tour.topics.find(t=>t.id===topicId)?.title||'overview',text:value.text}],{...cursor,blockId:value.id});change();prefetch(token);
   }catch(error){if(token!==epoch||signal.aborted)return;if(error.status===401)requireAuth();else{onError(error);change()}}
  }
  narrator.onProgress=value=>{if(!playing||value.blockId!==selected?.id){prior.onProgress?.(value);return}cursor={chapterId:selected.id,chunkIndex:value.chunkIndex,offsetSeconds:value.offsetSeconds,textHash:speechTextHash(selected.text),chunkingVersion:SPEECH_CHUNKING_VERSION};onBackup({tourId:tour.id,...cursor});if(now()-lastSaved>=5000)save()};
- narrator.onComplete=block=>{if(!playing||block.id!==selected?.id){prior.onComplete?.(block);return}completed.add(block.id);onChapterComplete({tourId:tour.id,chapterId:block.id});cursor={...cursor,chunkIndex:0,offsetSeconds:0};save();const token=epoch;playing=false;change();if(authPending){requireAuth();return}if(continuous){const id=nextTopic();if(id)queueMicrotask(()=>{if(token===epoch&&continuous)play(id,{advance:true})})}};
- narrator.onState=value=>{prior.onState?.(value);change()};
- narrator.onAuthRequired=()=>{if(playing){save();requireAuth()}else prior.onAuthRequired?.()};
- narrator.onError=error=>{if(playing){save();onError(error)}else prior.onError?.(error)};
+ narrator.onComplete=block=>{if(!playing||block.id!==selected?.id){prior.onComplete?.(block);return}completed.add(block.id);onChapterComplete({tourId:tour.id,chapterId:block.id});cursor={...cursor,chunkIndex:0,offsetSeconds:0};save();transitionAt=now();const token=epoch;playing=false;change();if(authPending){requireAuth();return}if(continuous){const id=nextTopic();if(id)queueMicrotask(()=>{if(token===epoch&&continuous)play(id,{advance:true})})}};
+ narrator.onState=value=>{if(playing&&attempt){if(value==='loading')attempt.loading=now();if(value==='paused')attempt.loading=null;if(value==='playing'){if(!attempt.first){attempt.first=true;playback('first_audio',{durationMs:Math.min(120000,Math.max(0,now()-attempt.started))});if(attempt.boundary!==null){attempt.gap=true;playback('gap',{durationMs:Math.min(120000,Math.max(0,now()-attempt.boundary))})}}else if(!attempt.gap&&attempt.loading!==null){attempt.gap=true;playback('gap',{durationMs:Math.min(120000,Math.max(0,now()-attempt.loading))})}attempt.loading=null}}prior.onState?.(value);change()};
+ narrator.onAuthRequired=()=>{if(playing){playback('playback_error',{code:'auth_required'});save();requireAuth()}else prior.onAuthRequired?.()};
+ narrator.onError=error=>{if(playing){playback('playback_error',{code:['auth_required','provider_timeout','provider_error'].includes(error?.code)?error.code:'audio_error'});save();onError(error)}else prior.onError?.(error)};
  const api={
   open(value,backup){
    api.stop();tour=structuredClone(value);completed=new Set((value.progress?.completedChapterIds||[]).filter(id=>tour.chapters.some(c=>c.id===id&&c.status==='ready')));

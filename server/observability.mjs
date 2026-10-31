@@ -7,7 +7,11 @@ const operations=['api','search','extract','story','question','identify','transl
 const stages=['discovery','acquisition','generation','review','speech'];
 const outcomes=['success','error','timeout','cancelled','rejected','ready','limited','context_only','no_material','temporarily_unavailable','not_configured','budget_exhausted','policy_restricted','empty','partial'];
 const caches=['discovery','sources','acquisition','generation','speech'];
-const routes=['/api/config','/api/session','/api/guide','/api/speech','/api/places/nearby','/api/places/search','/api/places/resolve','/api/places/enrich','/auth/google','/auth/google/callback','/auth/logout'];
+const tourStages=['research','plan','generate','review'];
+const tourOutcomes=['success','limited','rejected','error','timeout','budget'];
+export const tourReasons=['unsupported_claim','contradiction','wrong_object','regional_context','uncovered_claim','duplicate_claim','invalid_json','incomplete_response','invalid_schema','invalid_evidence','invalid_claim','missing_evidence','provider_error','provider_timeout','auth_required','budget_exhausted','source_unavailable','insufficient_evidence','verification_failed','busy','invalid_output'];
+export const playbackCodes=['auth_required','provider_error','provider_timeout','network_error','audio_error','other'];
+const routes=['/api/tours','/api/tours/:id','/api/tours/:id/chapters/:topicId','/api/tours/:id/progress','/api/tours/:id/playback-events','/api/config','/api/session','/api/guide','/api/speech','/api/places/nearby','/api/places/search','/api/places/resolve','/api/places/enrich','/auth/google','/auth/google/callback','/auth/logout'];
 const buckets=[0.05,0.1,0.25,0.5,1,2,5,10,20,30,60,90];
 const pick=(value,allowed,fallback='other')=>allowed.includes(value)?value:fallback;
 const number=(value,max=1e12)=>typeof value==='number'&&Number.isFinite(value)&&value>=0?Math.min(value,max):0;
@@ -15,6 +19,12 @@ const status=value=>Number.isInteger(value)&&value>=100&&value<=599?String(value
 const quote=value=>String(value).replaceAll('\\','\\\\').replaceAll('\n','\\n').replaceAll('"','\\"');
 const labelsText=labels=>Object.keys(labels).length?'{'+Object.entries(labels).map(([k,v])=>`${k}="${quote(v)}"`).join(',')+'}':'';
 export const metricDefinitions={
+ tour_jobs_total:['counter','Tour stage completions',['stage','outcome']],
+ tour_review_failures_total:['counter','Tour review issue codes',['reason']],
+ tour_job_duration_seconds:['histogram','Tour stage wall time',['stage']],
+ tour_storage_bytes:['gauge','Logical stored tour payload including volatile snapshots',[]],
+ tour_playback_duration_seconds:['histogram','Untrusted client timing; not billing',['type']],
+ tour_playback_errors_total:['counter','Untrusted client playback failures',['code']],
  http_requests_total:['counter','HTTP responses and disconnected requests',['route','method','status']],
  http_request_duration_seconds:['histogram','HTTP request lifetime including response body',['route','method']],
  http_in_flight:['gauge','Current non-metrics HTTP requests',[]],
@@ -74,7 +84,15 @@ export function createObservability({env=process.env,write=line=>console.log(lin
  }
  function log(event,fields){try{write(JSON.stringify({event:'waystory_'+event,requestId:requestId()||randomUUID(),timestamp:new Date(now()).toISOString(),revision,...fields}))}catch{}}
  function record(event,f={}){
-  if(event==='story_context'||event==='review_detail'){
+  if(event==='tour_storage'){update('tour_storage_bytes',{},number(f.bytes),'set')}else if(event==='tour_playback'){
+   if(['first_audio','gap'].includes(f.type))update('tour_playback_duration_seconds',{type:f.type},number(f.durationMs,120000)/1000);
+   if(f.type==='playback_error')update('tour_playback_errors_total',{code:pick(f.code,playbackCodes)},1);
+  }else if(event==='tour_job'){
+   if(!tourStages.includes(f.stage)||!tourOutcomes.includes(f.outcome))return;
+   update('tour_jobs_total',{stage:f.stage,outcome:f.outcome},1);update('tour_job_duration_seconds',{stage:f.stage},number(f.durationMs)/1000);
+   if(f.stage==='review')for(const reason of [...new Set([f.reason,...(f.reasons||[])])])if(tourReasons.includes(reason))update('tour_review_failures_total',{reason},1);
+   const entry=safeTelemetryEntry({event:'waystory_tour_job',requestId:requestId()||randomUUID(),...f});if(entry){const {event:_,requestId:__,...fields}=entry;log('tour_job',fields)}
+  }else if(event==='story_context'||event==='review_detail'){
    const entry=safeTelemetryEntry({event:'waystory_'+event,requestId:requestId()||randomUUID(),...f});if(entry){const {event:_,requestId:__,...fields}=entry;log(event,fields)}
   }else if(event==='provider'){
    const provider=pick(f.provider,providers,'osm'),operation=pick(f.operation,operations),code=status(f.status),outcome=pick(f.outcome,['success','error','timeout','cancelled'],'error'),duration=number(f.durationMs)/1000;
@@ -108,6 +126,8 @@ export function createObservability({env=process.env,write=line=>console.log(lin
  update('tts_characters_requested_total',{},0);
  update('http_in_flight',{},0,'set');
  const revision=/^[a-zA-Z0-9:._-]{1,100}$/.test(env.WAYSTORY_REVISION||'')?env.WAYSTORY_REVISION:'unknown';update('build_info',{revision},1,'set');
+ for(const stage of tourStages)for(const outcome of tourOutcomes)update('tour_jobs_total',{stage,outcome},0);
+ update('tour_storage_bytes',{},0,'set');
  const observer={record,
   run:work=>withRequestContext({observer,requestId:randomUUID()},work),
   authorize(header){if(!token)return 'disabled';const provided=typeof header==='string'&&header.startsWith('Bearer ')?header.slice(7):'';return Buffer.byteLength(provided)===Buffer.byteLength(token)&&timingSafeEqual(Buffer.from(provided),Buffer.from(token))?'allowed':'denied'},
@@ -115,7 +135,7 @@ export function createObservability({env=process.env,write=line=>console.log(lin
    return observer.run(()=>{
     res.setHeader('X-Request-ID',requestId());let path;try{path=new URL(req.url,'http://localhost').pathname}catch{path='unknown'}
     if(path==='/metrics')return handler();
-    const route=routes.includes(path)?path:path==='/'||/^\/[a-zA-Z0-9_-]+\.(mjs|css|svg|html)$/.test(path)?'static':'unknown',method=pick(req.method,['GET','HEAD','POST','OPTIONS'],'OTHER'),started=performance.now();
+    const route=path.startsWith('/api/tours/')?(/^\/api\/tours\/[^/]+\/playback-events$/.test(path)?'/api/tours/:id/playback-events':path.includes('/chapters/')?'/api/tours/:id/chapters/:topicId':path.endsWith('/progress')?'/api/tours/:id/progress':'/api/tours/:id'):routes.includes(path)?path:path==='/'||/^\/[a-zA-Z0-9_-]+\.(mjs|css|svg|html)$/.test(path)?'static':'unknown',method=pick(req.method,['GET','HEAD','POST','PUT','OPTIONS'],'OTHER'),started=performance.now();
     update('http_in_flight',{},1);let finished=false;const id=requestId();
     const finish=aborted=>{if(finished)return;finished=true;const code=aborted?'499':status(res.statusCode),seconds=(performance.now()-started)/1000;update('http_in_flight',{},-1);update('http_requests_total',{route,method,status:code},1);update('http_request_duration_seconds',{route,method},seconds);try{write(JSON.stringify({event:'waystory_request',requestId:id,timestamp:new Date(now()).toISOString(),revision,route,method,status:Number(code)||500,durationMs:Math.round(seconds*1000)}))}catch{}};
     res.once?.('finish',()=>finish(false));res.once?.('close',()=>finish(!res.writableFinished));
@@ -150,11 +170,12 @@ export function safeTelemetryEntry(p){
  const base={event:p.event,requestId:p.requestId,
   ...(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(p.timestamp||'')?{timestamp:p.timestamp}:{}),
   ...(/^[a-zA-Z0-9:._-]{1,100}$/.test(p.revision||'')?{revision:p.revision}:{})};
+ if(p.event==='waystory_tour_job'&&tourStages.includes(p.stage)&&tourOutcomes.includes(p.outcome))return {...base,stage:p.stage,outcome:p.outcome,durationMs:number(p.durationMs),...Object.fromEntries(['tourId','diagnosticId'].filter(k=>/^[a-f0-9-]{36}$/.test(p[k]||'')).map(k=>[k,p[k]])),...(/^(overview|plan|[a-f0-9]{64})$/.test(p.chapterId||'')?{chapterId:p.chapterId}:{}),...(tourReasons.includes(p.reason)?{reason:p.reason}:{}),...(Array.isArray(p.reasons)?{reasons:[...new Set(p.reasons.filter(r=>tourReasons.includes(r)))].slice(0,20)}:{})};
  const model=/^[a-zA-Z0-9/._:@-]{1,120}$/.test(p.model||'')?p.model:'unknown';
  if(p.event==='waystory_story_context'&&/^(osm:(node|way|relation):[1-9]\d*|wd:Q[1-9]\d*|wiki:[a-z-]+:[1-9]\d*)$/.test(p.placeId||''))return {...base,placeId:p.placeId,model};
  if(p.event==='waystory_review_detail'&&['supported','model_rejected','missing_evidence','provider_error','incomplete_response','invalid_json'].includes(p.reason))return {...base,model,attempt:[1,2].includes(p.attempt)?p.attempt:1,reason:p.reason,...(p.finishReason?{finishReason:['length','content_filter','tool_calls','function_call'].includes(p.finishReason)?p.finishReason:'unknown'}:{}),...(p.tokenCounts?{tokenCounts:Object.fromEntries(['prompt','completion','total'].filter(k=>Number.isSafeInteger(p.tokenCounts[k])&&p.tokenCounts[k]>=0).map(k=>[k,p.tokenCounts[k]]))}:{}),...(Array.isArray(p.evidenceFailures)?{evidenceFailures:p.evidenceFailures.filter(x=>Number.isInteger(x?.index)&&x.index>=0&&x.index<100&&['missing_item','unknown_source','uncited_source','short_quote','quote_not_found'].includes(x.reason)).slice(0,30).map(x=>({index:x.index,reason:x.reason}))}:{}),blockIndexes:[...new Set((Array.isArray(p.blockIndexes)?p.blockIndexes:[]).filter(x=>Number.isInteger(x)&&x>=0&&x<100))].slice(0,30),modelReasons:[...new Set((Array.isArray(p.modelReasons)?p.modelReasons:[]).filter(x=>['unsupported_claim','contradiction','wrong_object','regional_context'].includes(x)))]};
  if(p.event==='waystory_provider'&&providers.includes(p.provider)&&operations.includes(p.operation)&&['success','error','timeout','cancelled'].includes(p.outcome))return {...base,provider:p.provider,operation:p.operation,status:status(p.status)==='none'?null:p.status,outcome:p.outcome,durationMs:number(p.durationMs)};
  if(p.event==='waystory_stage'&&stages.includes(p.stage)&&outcomes.includes(p.outcome))return {...base,stage:p.stage,outcome:p.outcome,durationMs:number(p.durationMs),...(/^[a-f0-9-]{36}$/.test(p.diagnosticId||'')?{diagnosticId:p.diagnosticId}:{})};
- if(p.event==='waystory_request'&&[...routes,'static','unknown'].includes(p.route)&&['GET','HEAD','POST','OPTIONS','OTHER'].includes(p.method))return {...base,route:p.route,method:p.method,status:status(p.status)==='none'?500:p.status,durationMs:number(p.durationMs)};
+ if(p.event==='waystory_request'&&[...routes,'static','unknown'].includes(p.route)&&['GET','HEAD','POST','PUT','OPTIONS','OTHER'].includes(p.method))return {...base,route:p.route,method:p.method,status:status(p.status)==='none'?500:p.status,durationMs:number(p.durationMs)};
  return null;
 }

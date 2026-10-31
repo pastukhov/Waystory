@@ -1,3 +1,4 @@
+import {tourStage} from './telemetry.mjs';
 import {aiProvider} from '../ai-provider.mjs';
 import {reviewChapter} from '../sources/facts.mjs';
 import {sourcePolicy} from '../sources/policies.mjs';
@@ -66,8 +67,8 @@ export function createTours({store,jobs,research,complete,review,resolvePlace,co
    const concurrent=store.findActive(ownerId,placeId,language);if(concurrent)return {status:concurrent.status==='ready'?200:202,tourId:concurrent.id,tour:concurrent};
    const tour=store.create(ownerId,{placeId,language});
    try{jobs.start({ownerId,tourId:tour.id,topicId:'plan',run:async({signal})=>{
-    const snapshot=await research(place,{language,signal});validateSnapshot(snapshot);
-    const spans=buildEvidenceSpans(snapshot.documents),topics=await planTour({place,language,spans},{signal,complete:async request=>{signal.throwIfAborted();await quota(ownerId);signal.throwIfAborted();return complete(request)}});
+    const fields={tourId:tour.id,chapterId:'plan'},snapshot=await tourStage('research',fields,()=>research(place,{language,signal}),{now});validateSnapshot(snapshot);
+    const spans=buildEvidenceSpans(snapshot.documents),topics=await tourStage('plan',fields,()=>planTour({place,language,spans},{signal,complete:async request=>{signal.throwIfAborted();await quota(ownerId);signal.throwIfAborted();return complete(request)}}),{now});
     // A macrotask runs only after jobs has persisted the plan and released its
     // slot. Busy leaves overview planned; an explicit POST can prepare it.
     setImmediate(()=>{try{if(store.get(ownerId,tour.id)?.status==='ready')service.chapter(ownerId,tour.id,'overview').catch(()=>{});}catch{ /* The service/database may have shut down after plan completion. */ }});
@@ -94,7 +95,7 @@ export function createTours({store,jobs,research,complete,review,resolvePlace,co
     const snapshot=await getSnapshot(ownerId,tour,place,signal),spans=buildEvidenceSpans(snapshot.documents);
     const selectedTopic=topicId==='overview'?{...topic,evidenceIds:spans.map(s=>s.id)}:topic;let calls=0;
     const consumeCall=async()=>{signal.throwIfAborted();if(now()>=deadline)throw tourError('provider_timeout');if(calls>=LIMITS.maxChapterCalls)throw tourError('budget_exhausted',429);calls++;await quota(ownerId);signal.throwIfAborted();if(now()>=deadline)throw tourError('provider_timeout');};
-    return generateChapter({place,language:tour.language,topic:selectedTopic,spans,previousChapters:store.get(ownerId,id).chapters.filter(c=>c.topicId!==topicId)},{signal,deadline,now,complete:async request=>{await consumeCall();return complete(request)},review:(value,evidence,options)=>review(value,evidence,{...options,consumeCall})});
+    return tourStage('generate',{tourId:id,chapterId:topicId},()=>generateChapter({place,language:tour.language,topic:selectedTopic,spans,previousChapters:store.get(ownerId,id).chapters.filter(c=>c.topicId!==topicId)},{signal,deadline,now,complete:async request=>{await consumeCall();return complete(request)},review:(value,evidence,options)=>tourStage('review',{tourId:id,chapterId:topicId},()=>review(value,evidence,{...options,consumeCall}),{now})}),{now});
    }});
    return {status:202,accepted:result.accepted,chapter:store.get(ownerId,id).chapters.find(c=>c.topicId===topicId)};
   },

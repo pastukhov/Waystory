@@ -30,6 +30,7 @@ export function createToursClient({fetchFn=fetch,pollMs=2000}={}){
   get:(id,options)=>request(url(id),options),
   prepareChapter:(id,topicId,options)=>request(url(id)+'/chapters/'+part(topicId),{...options,method:'POST',body:{}}),
   retryChapter:(id,topicId,options)=>request(url(id)+'/chapters/'+part(topicId)+'/retry',{...options,method:'POST',body:{}}),
+  playbackEvent:(id,body,options)=>request(url(id)+'/playback-events',{...options,method:'POST',body}),
   saveProgress:(id,body,options)=>request(url(id)+'/progress',{...options,method:'PUT',body}),
   async waitFor(id,predicate,{signal}={}){
    for(;;){

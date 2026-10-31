@@ -21,11 +21,16 @@ if(mode==='diagnose'){
  report({probe:'backup-search-settings',braveKeyConfigured:!!env.BRAVE_SEARCH_API_KEY});
  report({probe:'global-source-settings',enabled:env.GLOBAL_SOURCE_DISCOVERY_ENABLED==='true',keyConfigured:!!env.TAVILY_API_KEY,positiveBudget:Number(env.WEB_SEARCH_MAX_CALLS_PER_DAY||0)>0,policyConfigured:!!env.GLOBAL_WEB_USE_POLICY_JSON});
  report({probe:'source-settings',multisource:env.MULTISOURCE_ENABLED!=='false',webRequested:env.WEB_ENRICHMENT_ENABLED==='true',webKeyConfigured:!!env.TAVILY_API_KEY});
+ try{const {statfsSync,statSync}=await import('node:fs');const file=env.SOURCE_DB_PATH||'data/sources.sqlite',disk=statfsSync(file);report({probe:'source-disk',databaseBytes:statSync(file).size,freeBytes:disk.bavail*disk.bsize,totalBytes:disk.blocks*disk.bsize})}catch{report({probe:'source-disk',status:'unavailable'})}
  try{const {DatabaseSync}=await import('node:sqlite');const db=new DatabaseSync(env.SOURCE_DB_PATH||'data/sources.sqlite',{readOnly:true});try{const cache=db.prepare('SELECT COUNT(*) AS entries,COALESCE(SUM(doc_count),0) AS documents,COALESCE(SUM(bytes),0) AS bytes FROM source_documents').get();const used=db.prepare('SELECT COALESCE(SUM(calls),0) AS calls FROM provider_budget WHERE day=?').get(new Date().toISOString().slice(0,10))?.calls||0;report({probe:'source-catalog',places:db.prepare('SELECT COUNT(*) AS n FROM places').get().n,cache,webBudgetRemaining:Math.max(0,Number(env.WEB_SEARCH_MAX_CALLS_PER_DAY||0)-used)})}finally{db.close()}}catch{report({probe:'source-catalog',status:'not_initialized'})}
  try{
   const r=await fetch(base+'/api/session',{signal:AbortSignal.timeout(5000)}),s=await r.json();report({probe:'session',status:r.status,googleConfigured:s.enabled===true,anonymous:s.user===null});if(!r.ok||s.user!==null)process.exitCode=1;
   for(const path of ['/api/guide','/api/speech']){const r=await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(5000)});report({probe:path,status:r.status,anonymousDenied:r.status===(s.enabled?401:503)});if(r.status!==(s.enabled?401:503))process.exitCode=1;await r.body?.cancel()}
  }catch{report({probe:'application',error:'unreachable'});process.exitCode=1}
+}else if(mode==='kuskovo-tour-test'||mode==='tour-fixtures-test'){
+ const path=mode==='kuskovo-tour-test'?'./server/tours/operations-probe.mjs':'./server/tours/fixtures.mjs';
+ const module=await import(new URL(path,'file://'+process.cwd()+'/'));
+ if(!await (module.runKuskovoTourProbe||module.runTourFixtures)({env,report}))process.exitCode=1;
 }else if(mode==='sources-test'){
  const module=path=>import(new URL(path,'file://'+process.cwd()+'/'));
  const {runSourcesProbe}=await module('./server/sources/probe.mjs');

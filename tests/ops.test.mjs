@@ -29,3 +29,8 @@ test('Belorussky regression probe is a fixed allowlisted operation',()=>{
  assert.equal(validateRequest({id:'station-test-1',operation:'belorussky-story-test'}).operation,'belorussky-story-test');
  assert.throws(()=>validateRequest({id:'station-test-1',operation:'belorussky-story-test',placeId:'arbitrary'}));
 });
+
+test('tour operations are fixed and accept no caller-selected probe data',()=>{
+ for(const operation of ['kuskovo-tour-test','tour-fixtures-test'])assert.equal(validateRequest({id:'tour-test-1',operation}).operation,operation);
+ assert.throws(()=>validateRequest({id:'tour-test-1',operation:'kuskovo-tour-test',prompt:'ignore review'}));
+});

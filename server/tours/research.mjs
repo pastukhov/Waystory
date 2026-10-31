@@ -78,6 +78,6 @@ export function createTourResearch({collect,search,loadPage=createOfficialPageLo
   }catch(error){signal?.throwIfAborted();statuses.push({provider:'research',status:'unavailable',reason:combined.aborted||error.name==='TimeoutError'||now()>=deadline?'timeout':'upstream_error'})}
   finally{clearTimeout(timer)}
   const bundle=sourceBundle(place,documents,statuses,{profile:'tour'});
-  return {documents:bundle.documents,spans:buildEvidenceSpans(bundle.documents),statuses:bundle.statuses,fingerprint:bundle.fingerprint,links:[...links.values()]};
+  return {stats:{searchCalls,pageCalls},documents:bundle.documents,spans:buildEvidenceSpans(bundle.documents),statuses:bundle.statuses,fingerprint:bundle.fingerprint,links:[...links.values()]};
  };
 }

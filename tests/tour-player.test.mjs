@@ -21,3 +21,11 @@ test('another tour local backup does not hide this tour server progress',async()
 test('changed text resets the same selected topic rather than returning to overview',async()=>{const {p,calls}=setup();p.open(fixture(),{tourId:'tour',chapterId:'c-history',chunkIndex:8,offsetSeconds:9,textHash:'0000000000000000',chunkingVersion:1});await p.resume();assert.equal(calls.at(-1)[1][0].id,'c-history');assert.equal(calls.at(-1)[2].offsetSeconds,0);p.dispose()});
 test('tour chapter completion notifies history without legacy heard-block callbacks',async()=>{const completed=[],legacy=[];const {p,narrator}=setup({onLegacyComplete:value=>legacy.push(value),onChapterComplete:value=>completed.push(value)});p.open(fixture());await p.play('overview');narrator.onProgress({blockId:'c-overview',chunkIndex:0,offsetSeconds:2});assert.equal(completed.length,0);narrator.onComplete({id:'c-overview'});assert.equal(completed.length,1);assert.equal(completed[0].chapterId,'c-overview');assert.equal(completed[0].tourId,'tour');assert.deepEqual(legacy,[]);p.dispose()});
 test('clear releases the previous tour and cannot resume it under a new place',async()=>{const {p,calls}=setup();p.open(fixture());await p.play('overview');p.clear();assert.equal(p.getState().tour,null);await p.resume();assert.equal(calls.length,1);p.dispose()});
+
+test('playback telemetry records first audio once and first fragment gap without paused time',async()=>{
+ let time=100;const events=[];
+ const narrator={state:'idle',play(){this.onState('loading')},stop(){},pause(){this.onState('paused')}};
+ const tour={id:'tour',language:'ru',topics:[],chapters:[{id:'overview',topicId:'overview',status:'ready',text:'Музей открыт.'}]};
+ const player=createTourPlayer({client:{playbackEvent:async(id,body)=>events.push({id,...body})},narrator,saveProgress:async()=>{},now:()=>time});player.open(tour);await player.play('overview');time=250;narrator.onState('playing');narrator.onState('playing');time=300;narrator.onState('loading');time=400;narrator.onState('playing');narrator.onState('paused');time=800;narrator.onState('playing');
+ assert.deepEqual(events.map(({type,durationMs})=>({type,durationMs})),[{type:'first_audio',durationMs:150},{type:'gap',durationMs:100}]);assert.equal(events[0].attemptId,events[1].attemptId);player.dispose();
+});
