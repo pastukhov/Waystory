@@ -2,7 +2,7 @@ import {normalizeSpeechText} from '../../dist/speech-text.mjs';
 // Fixed orchestration shared by the real Operations probe and offline fixtures.
 // Never returns source/chapter prose, prompts, credentials or owner identifiers.
 export async function runTourProbe({service,jobs,ownerId,placeId,language='ru',speech,requiredThemes=3,report=()=>{},now=Date.now}={}){
- const start=now(),result=await service.start(ownerId,{placeId,language});
+ const start=now(),result=await service.start(ownerId,{placeId,language},{fresh:true});
  const settle=async()=>{await jobs.drain();await new Promise(resolve=>setImmediate(resolve));await jobs.drain();return service.get(ownerId,result.tourId)};
  let tour=await settle();
  const fail=reason=>{report({probe:'tour-result',passed:false,reason,revision:process.env.WAYSTORY_REVISION||'unknown',durationMs:now()-start});return false};

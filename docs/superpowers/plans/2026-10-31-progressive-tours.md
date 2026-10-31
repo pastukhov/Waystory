@@ -205,6 +205,8 @@ Modify `server/observability.mjs`, `server/diagnostics.mjs`, `scripts/ops-probe.
 - [x] Существующие реальные probes не получают произвольный URL/model/prompt из inputs. Operations choice, validator и tests обновить совместно.
 - [ ] npm test; monitoring smoke; PR/CI/Deploy; запустить один kuskovo-tour-test, проанализировать результат. Если fail — исправить конкретный слой, не повышать лимиты и не отключать проверку.
 
+Task 8 probe ruling: fixed Operations uses internal `start(...,{fresh:true})` so every acceptance run exercises research/planning/model/review even if an owner tour is cached. Existing owner tours are retained under the same cap/TTL; successful probe chapters are available through the regular owner API. The HTTP contract cannot request fresh generation.
+
 Task 8 implementation ruling: playback payload adds a UUID `attemptId` so first_audio/gap deduplication can distinguish explicit replay. Values never become metric labels or logs. Dedupe is process-local for the tour TTL (7 days), capped at 10,000 entries, with 30 validated requests/min/user and at most 1,000 active minute buckets. Diagnostic saturation returns 429 and never affects playback. Measurements start only after fulfilled audio.play(); they are untrusted client measurements, not audible-device verification.
 
 ## Task 9 — Проверка работающей экскурсии
