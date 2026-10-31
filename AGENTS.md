@@ -1,5 +1,12 @@
 # Repository instructions
 
+## Private single-user product
+
+- The owner confirmed on 2026-10-31 that the site is currently used only by them after login. Treat it as a private single-user product, not a public multi-user launch.
+- Keep the existing login, authorization and secret handling. This context does not authorize removing access controls.
+- Deliver completed features directly after tests, merge and deployment. Do not add feature flags, staged rollouts, separate enablement steps or user approval gates unless the owner requests them or a concrete technical dependency requires them.
+- Prefer the simplest implementation that solves the current task. Do not add public-launch infrastructure for hypothetical future users.
+
 ## Auto-merge and delivery
 
 The repository owner has explicitly authorized automatic merging of completed work. This is a standing instruction for future sessions in this repository.
