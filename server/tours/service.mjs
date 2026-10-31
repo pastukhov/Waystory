@@ -67,7 +67,7 @@ export function createTours({store,jobs,research,complete,review,resolvePlace,co
    const concurrent=store.findActive(ownerId,placeId,language);if(concurrent)return {status:concurrent.status==='ready'?200:202,tourId:concurrent.id,tour:concurrent};
    const tour=store.create(ownerId,{placeId,language});
    try{jobs.start({ownerId,tourId:tour.id,topicId:'plan',run:async({signal})=>{
-    const fields={tourId:tour.id,chapterId:'plan'},snapshot=await tourStage('research',fields,()=>research(place,{language,signal}),{now});validateSnapshot(snapshot);
+    const fields={tourId:tour.id,chapterId:'plan'},snapshot=await tourStage('research',fields,async()=>{const value=await research(place,{language,signal});validateSnapshot(value);return value},{now});
     const spans=buildEvidenceSpans(snapshot.documents),topics=await tourStage('plan',fields,()=>planTour({place,language,spans},{signal,complete:async request=>{signal.throwIfAborted();await quota(ownerId);signal.throwIfAborted();return complete(request)}}),{now});
     // A macrotask runs only after jobs has persisted the plan and released its
     // slot. Busy leaves overview planned; an explicit POST can prepare it.

@@ -21,3 +21,11 @@ test('playback deduplication survives a minute rate reset and expires with the t
 test('public job error keeps the safe diagnostic ID used by stage logs',async()=>{
  const {tourError,publicJobError}=await import('../server/tours/store.mjs'),error=tourError('provider_timeout');assert.equal(publicJobError(error).diagnosticId,error.diagnosticId);assert.match(publicJobError({code:'provider_error',diagnosticId:'SECRET'}).diagnosticId,/^[a-f0-9-]{36}$/);
 });
+
+test('snapshot policy rejection is recorded inside the research stage before any paid model call',async()=>{
+ const {DatabaseSync}=await import('node:sqlite'),{createTourStore}=await import('../server/tours/store.mjs'),{createTourJobs}=await import('../server/tours/jobs.mjs'),{createTours}=await import('../server/tours/service.mjs'),{registerSourcePolicy}=await import('../server/sources/policies.mjs');
+ registerSourcePolicy('tour-telemetry-zero-ttl',{allowModelInput:true,allowTextCache:false,ttlMs:0});
+ const db=new DatabaseSync(':memory:'),store=createTourStore({db}),jobs=createTourJobs({store}),logs=[],observer=createObservability({env:{},write:line=>logs.push(JSON.parse(line))});
+ const service=createTours({store,jobs,resolvePlace:async()=>({id:'wiki:ru:1'}),research:async()=>({documents:[{text:'PRIVATE',license:{policyId:'tour-telemetry-zero-ttl'}}]}),complete:()=>assert.fail('policy denial must precede models'),consume:()=>assert.fail('policy denial must precede quotas')});
+ try{await observer.run(async()=>{await service.start('owner',{placeId:'wiki:ru:1',language:'ru'});await jobs.drain()});const event=logs.find(e=>e.event==='waystory_tour_job');assert.equal(event.stage,'research');assert.equal(event.outcome,'error');assert.equal(event.reason,'source_unavailable');}finally{await jobs.shutdown();db.close()}
+});
