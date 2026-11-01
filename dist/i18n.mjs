@@ -5,6 +5,13 @@ import {estimatedSeconds} from './duration.mjs';
 export const messages={
 "сек":"sec",
 "Экскурсия":"Tour",
+"ЭКСКУРСИЯ":"TOUR",
+"Слушать экскурсию":"Listen to tour",
+"Продолжить":"Continue",
+"Слушать заново":"Listen again",
+"Повторить главу":"Retry chapter",
+"Главы экскурсии":"Tour chapters",
+"Исходная статья":"Source article",
 "Слушать обзор":"Listen to overview",
 "Продолжить экскурсию":"Continue tour",
 "Продолжить с сохранённого места":"Resume from saved position",
