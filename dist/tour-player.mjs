@@ -74,7 +74,7 @@ export function createTourPlayer({client,narrator,saveProgress=(id,value)=>clien
    if(action==='pause')return api.pause();
    if(action==='resume')return api.resume();
    if(['unavailable','preparing'].includes(action))return;
-   const target=action==='restart'?['overview',...tour.topics.map(t=>t.id)].find(id=>chapter(id)?.status==='ready'):action==='retry'&&selected?.status==='failed'?selected.topicId:primaryTarget();
+   const target=action==='restart'?['overview',...tour.topics.map(t=>t.id)].find(id=>chapter(id)?.status==='ready'):action==='retry'&&selected?.status==='failed'&&selected.error?.retryable?selected.topicId:primaryTarget();
    if(action==='restart'){completed.clear();cursor=null;}
    api.setContinuous(true);return play(target,{retry:action==='retry'});
   },

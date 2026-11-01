@@ -70,3 +70,6 @@ test('pause and resume preserve a manually replayed completed chapter',async()=>
 test('stopping and reloading a completed chapter replay restores its live cursor',async()=>{
  const {p,narrator,saved,calls}=setup();p.open(fixture());await p.play('overview');narrator.onComplete({id:'c-overview'});await p.play('overview');narrator.onProgress({blockId:'c-overview',chunkIndex:0,offsetSeconds:12});p.stop();assert.equal(p.getState().action,'resume');await p.primary();assert.equal(calls.at(-1)[2].offsetSeconds,12);p.stop();await tick();const restored=setup();restored.p.open({...fixture(),progress:saved.at(-1)});await restored.p.primary();assert.equal(restored.calls.at(-1)[1][0].id,'c-overview');assert.equal(restored.calls.at(-1)[2].offsetSeconds,12);restored.p.dispose();p.dispose();
 });
+test('primary retries eligible next chapter after a terminal failed selection',async()=>{
+ const tour=fixture();tour.chapters[1]={...chapter('history','failed'),error:{retryable:false}};tour.chapters[2]={...chapter('park','failed'),error:{retryable:true}};const retried=[];const {p}=setup({client:{retryChapter:async(id,topic)=>{retried.push(topic);return chapter(topic)}}});p.open(tour);await p.play('history');assert.equal(p.getState().action,'retry');await p.primary();assert.equal(retried[0],'park');p.dispose();
+});
