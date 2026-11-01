@@ -138,16 +138,6 @@ async function openTour(place,token,signal){
  }catch(error){if(!placeEpoch.isCurrent(token)||signal.aborted)return;tourLoading=false;tourFailure=true;drawTour();tourError(error)}
 }
 window.addEventListener('pagehide',()=>tourPlayer.stop());
-async function restoreTour(){
- const cursor=readTourCursor();if(!cursor||!state.tours||!state.user||state.selected)return;const token=placeEpoch.next();placeController?.abort();placeController=new AbortController();
- try{const tour=await toursClient.get(cursor.tourId,{signal:placeController.signal});if(!placeEpoch.isCurrent(token)||state.selected)return;
-  let place={id:tour.placeId,placeId:tour.placeId,title:t('Экскурсия'),blocks:[]};
-  const wiki=/^wiki:([a-z]+):(\d+)$/.exec(tour.placeId),osm=/^osm:(node|way|relation):(\d+)$/.exec(tour.placeId),wd=/^wd:(Q\d+)$/.exec(tour.placeId);
-  const ref=wiki?{provider:'wikipedia',language:wiki[1],pageId:Number(wiki[2])}:osm?{provider:'osm',kind:osm[1],id:osm[2]}:wd?{provider:'wikidata',id:wd[1]}:null;
-  if(ref){try{place=await resolvePlace({...place,refs:[ref]},placeController.signal,LANGUAGE);if(place.pageid)place=await loadPlace({...place,blocks:undefined},placeController.signal,LANGUAGE)}catch(error){if(error.name==='AbortError')return}}
-  if(!placeEpoch.isCurrent(token))return;state.selected={...place,sources:tour.sources?.length?tour.sources:place.sources,outputLicense:tour.outputLicense,officialLinks:tour.officialLinks||[],searchLinks:tour.searchLinks||[]};tourMode=true;tourLoading=false;renderStory();tourPlayer.open(tour,cursor);openDialog('story-dialog');
- }catch(error){if(error.status===401)tourAuth();else if(error.status===404){try{localStorage.removeItem(cursorKey)}catch{}}}
-}
 function updateProgress(){const all=state.selected?.blocks?.filter(b=>b.depth<=state.depth)||[];const count=all.filter(b=>state.heard.includes(b.id)).length;$('player-progress').style.width=(all.length?100*count/all.length:0)+'%';$('player-progress-label').textContent=count+t(' из ')+all.length+t(' фрагментов')}
 function renderStory(){
  const p=state.selected;if(!p)return;const hasStory=!!p.blocks?.some(b=>b.text?.trim());
@@ -299,7 +289,6 @@ $('identify-photo').onclick=async()=>{
 $('photo-dialog').addEventListener('close',()=>{cancelPhoto();$('photo-note').textContent=t('Фото отправится только после нажатия «Узнать».')});
 async function config(){await loadAccount();const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),8000);try{const r=await fetch('/api/config',{headers:{Accept:'application/json'},signal:controller.signal});if(!r.ok||!r.headers.get('content-type')?.includes('application/json'))return false;const c=await r.json();if(!c||typeof c.ai!=='boolean'||typeof c.tours!=='boolean'||c.ai&&c.tours!==true)return false;state.multisource=c.multisource===true;state.tours=c.tours===true&&!!state.user;state.webEnrichment=c.webEnrichment===true;state.ai=c.ai===true&&!!state.user;state.vision=c.vision===true&&!!state.user;narrator.cloud=c.tts===true&&!!state.user;if(!state.user){$('mode-note').querySelector('p').textContent=t('Поиск доступен без входа. ИИ-рассказы, вопросы и облачная озвучка — после входа через Google.');$('photo-note').textContent=t('Войдите через Google, чтобы пользоваться ИИ.');}if(narrator.cloud){$('voice-description').textContent=t('Облачная озвучка. Текст отправляется на озвучку при нажатии «Слушать». Готовые фрагменты временно сохраняются на сервере.');$('rate-description').textContent=t('Темп меняется сразу, без повторного синтеза.');}if(state.ai){$('mode-note').querySelector('p').textContent=t('ИИ-гид подключён: рассказы по источникам, вопросы и распознавание фото. Подробность можно менять во время прослушивания.');$('about-ai-title').textContent=t('ИИ-гид подключён');$('about-ai-description').textContent=t('Рассказы и ответы создаёт ИИ по переданному источнику. Фото помогает предположить название места. ')+(narrator.cloud?t('Озвучка создаётся облачным сервисом.'):t('Озвучка использует голос вашего устройства.'));$('photo-note').textContent=t('Выберите фото. Оно отправится только после нажатия «Узнать».');$('identify-photo').disabled=!state.vision||!state.photo;if(state.selected)renderStory();translateDiscovery(discoveryToken);translateLibrary()}return true}catch{return false}finally{clearTimeout(timer)}}
 const configReady=config();
-configReady.then(()=>restoreTour());
 renderPlaces();updateSaveButton();loadNearby();
 window.addEventListener('pagehide',()=>{narrator.stop();recognition?.abort();placeController?.abort();answerController?.abort();searchController?.abort();photoController?.abort();if(state.photoUrl)URL.revokeObjectURL(state.photoUrl)});
 
