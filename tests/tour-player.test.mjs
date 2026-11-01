@@ -43,3 +43,33 @@ test('pause before first audio excludes human wait and cancels continuous bounda
  player.open(tour);await player.play('overview');player.setContinuous(true);time=50;narrator.onState('playing');time=100;narrator.onComplete({id:'overview'});await new Promise(r=>setImmediate(r));time=200;narrator.onState('paused');time=1000;narrator.onState('loading');time=1050;narrator.onState('playing');
  assert.equal(events.filter(e=>e.chapterId==='t'&&e.type==='gap').length,0);assert.equal(events.find(e=>e.chapterId==='t'&&e.type==='first_audio').durationMs,150);player.dispose();
 });
+
+test('primary action starts continuous tour, pauses/resumes, advances completed chapter and explicitly restarts at the end',async()=>{
+ const {p,narrator,calls}=setup();p.open(fixture());await p.primary();assert.equal(p.getState().continuous,true);assert.equal(calls.at(-1)[1][0].id,'c-overview');
+ await p.primary();assert.equal(narrator.state,'paused');await p.primary();assert.equal(narrator.state,'playing');
+ p.setContinuous(false);narrator.onComplete({id:'c-overview'});await p.primary();assert.equal(calls.at(-1)[1][0].id,'c-history');
+ p.setContinuous(false);narrator.onComplete({id:'c-history'});await p.primary();assert.equal(calls.at(-1)[1][0].id,'c-park');
+ p.setContinuous(false);narrator.onComplete({id:'c-park'});assert.equal(p.getState().action,'restart');await p.primary();assert.equal(calls.at(-1)[1][0].id,'c-overview');assert.deepEqual(p.getState().completedChapterIds,[]);p.dispose();
+});
+test('primary resumes saved cursor, keeps manual selection noncontinuous, and retries failed chapter explicitly',async()=>{
+ const {p,narrator,calls}=setup();p.open(fixture(),{tourId:'tour',chapterId:'c-history',chunkIndex:0,offsetSeconds:9,textHash:speechTextHash('Text for history'),chunkingVersion:1});await p.primary();assert.equal(calls.at(-1)[2].offsetSeconds,9);assert.equal(p.getState().continuous,false);p.pause();await p.primary();assert.equal(narrator.state,'playing');p.dispose();
+ const tour=fixture();tour.chapters[0]={...chapter('overview','failed'),error:{retryable:true}};const retried=setup({client:{retryChapter:async()=>chapter('overview')}});retried.p.open(tour);assert.equal(retried.p.getState().action,'retry');await retried.p.primary();assert.equal(retried.calls.at(-1)[1][0].id,'c-overview');retried.p.dispose();
+});
+test('pending chapter preparation disables primary without preparing a different topic',async()=>{
+ let resolve;const tour=fixture();tour.chapters[1]=chapter('history','planned');const {p,calls}=setup({client:{prepareChapter:()=>new Promise(r=>resolve=r)}});p.open(tour);const pending=p.play('history');assert.equal(p.getState().action,'preparing');await p.primary();assert.equal(calls.length,0);resolve(chapter('history'));await pending;assert.equal(calls.at(-1)[1][0].id,'c-history');p.dispose();
+});
+test('completed tour with unavailable overview restarts the first ready chapter',async()=>{
+ const tour=fixture();tour.chapters[0]=chapter('overview','insufficient');tour.progress={chapterId:'c-park',chunkIndex:0,offsetSeconds:0,completedChapterIds:['c-history','c-park']};const {p,calls}=setup();p.open(tour);assert.equal(p.getState().action,'restart');await p.primary();assert.equal(calls.at(-1)[1][0].id,'c-history');p.dispose();
+});
+test('stopping pending preparation allows continuing that chapter instead of leaving the control disabled',async()=>{
+ const pending=[];const tour=fixture();tour.chapters[1]=chapter('history','planned');const {p,calls}=setup({client:{prepareChapter:()=>new Promise(r=>pending.push(r))}});p.open(tour);const first=p.play('history');p.stop();assert.equal(p.getState().action,'continue');const resumed=p.primary();pending[1](chapter('history'));await resumed;pending[0](chapter('history'));await first;assert.equal(calls.at(-1)[1][0].id,'c-history');p.dispose();
+});
+test('pause and resume preserve a manually replayed completed chapter',async()=>{
+ const {p,narrator,calls}=setup();p.open(fixture());await p.play('overview');narrator.onComplete({id:'c-overview'});await p.play('overview');await p.primary();assert.equal(narrator.state,'paused');const count=calls.length;await p.primary();assert.equal(narrator.state,'playing');assert.equal(p.getState().selected.id,'c-overview');assert.equal(calls.length,count);p.dispose();
+});
+test('stopping and reloading a completed chapter replay restores its live cursor',async()=>{
+ const {p,narrator,saved,calls}=setup();p.open(fixture());await p.play('overview');narrator.onComplete({id:'c-overview'});await p.play('overview');narrator.onProgress({blockId:'c-overview',chunkIndex:0,offsetSeconds:12});p.stop();assert.equal(p.getState().action,'resume');await p.primary();assert.equal(calls.at(-1)[2].offsetSeconds,12);p.stop();await tick();const restored=setup();restored.p.open({...fixture(),progress:saved.at(-1)});await restored.p.primary();assert.equal(restored.calls.at(-1)[1][0].id,'c-overview');assert.equal(restored.calls.at(-1)[2].offsetSeconds,12);restored.p.dispose();p.dispose();
+});
+test('primary retries eligible next chapter after a terminal failed selection',async()=>{
+ const tour=fixture();tour.chapters[1]={...chapter('history','failed'),error:{retryable:false}};tour.chapters[2]={...chapter('park','failed'),error:{retryable:true}};const retried=[];const {p}=setup({client:{retryChapter:async(id,topic)=>{retried.push(topic);return chapter(topic)}}});p.open(tour);await p.play('history');assert.equal(p.getState().action,'retry');await p.primary();assert.equal(retried[0],'park');p.dispose();
+});

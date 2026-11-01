@@ -3,11 +3,27 @@ import {speechTextHash,speechChunkCount,SPEECH_CHUNKING_VERSION} from './speech.
 // A selection owns all pending work. Audio completion, not preparation, advances it.
 export function createTourPlayer({client,narrator,saveProgress=(id,value)=>client.saveProgress(id,value),onChange=()=>{},onAuthRequired=()=>{},onError=()=>{},onBackup=()=>{},onChapterComplete=()=>{},now=Date.now}={}){
  let tour=null,selected=null,cursor=null,continuous=false,epoch=0,controller=null,preview=null,authPending=false,authNotified=false,playing=false,lastSaved=0,disposed=false;
- let attempt=null,transitionAt=null;
+ let attempt=null,transitionAt=null,preparing=false;
  function playback(type,extra={}){if(!attempt||!selected||!client.playbackEvent)return;try{Promise.resolve(client.playbackEvent(tour.id,{chapterId:selected.id,attemptId:attempt.id,type,...extra})).catch(()=>{})}catch{}}
  let completed=new Set(),saveQueue=Promise.resolve();
  const prior={onComplete:narrator.onComplete,onProgress:narrator.onProgress,onState:narrator.onState,onAuthRequired:narrator.onAuthRequired,onError:narrator.onError};
- const snapshot=()=>({tour,selected,continuous,cursor,state:playing?narrator.state:'idle',completedChapterIds:[...completed]});
+ function primaryTarget(){
+  if(selected&&['planned','generating'].includes(selected.status))return selected.topicId;
+  const topics=['overview',...(tour?.topics||[]).map(t=>t.id)],start=topics.indexOf(selected?.topicId);
+  const pending=id=>{const c=chapter(id);return c&&!completed.has(c.id)&&c.status!=='insufficient'&&(c.status!=='failed'||c.error?.retryable)};
+  return topics.slice(Math.max(0,start+1)).find(pending)||topics.find(pending);
+ }
+ function primaryAction(){
+  if(!tour||tour.status!=='ready')return 'unavailable';
+  if(playing&&['playing','loading'].includes(narrator.state))return 'pause';
+  if(playing&&narrator.state==='paused')return 'resume';
+  if(preparing)return 'preparing';
+  if(selected?.status==='ready'&&!completed.has(selected.id))return 'resume';
+  if(selected?.status==='failed'&&selected.error?.retryable)return 'retry';
+  const target=primaryTarget();if(target)return chapter(target).status==='failed'?'retry':selected?'continue':'start';
+  return tour.chapters.some(c=>c.status==='ready')?'restart':'unavailable';
+ }
+ const snapshot=()=>({tour,selected,continuous,cursor,state:playing?narrator.state:'idle',action:primaryAction(),completedChapterIds:[...completed]});
  const change=()=>{if(!disposed)onChange(snapshot())};
  const chapter=topicId=>tour?.chapters.find(c=>c.topicId===topicId);
  const nextTopic=()=>{const ids=['overview',...tour.topics.map(t=>t.id)],index=ids.indexOf(selected?.topicId);return ids.slice(index+1).find(id=>!completed.has(chapter(id)?.id)&&chapter(id)?.status!=='insufficient')};
@@ -23,12 +39,13 @@ export function createTourPlayer({client,narrator,saveProgress=(id,value)=>clien
  }
  function prefetch(token){if(!continuous||preview||authPending)return;const id=nextTopic();if(!id)return;const signal=controller.signal;preview={topicId:id,promise:prepare(id,signal,token).then(value=>({value}),error=>({error}))};preview.promise.then(result=>{if(token!==epoch||signal.aborted)return;if(result.error?.status===401)authPending=true;if(result.value?.status==='ready'&&continuous)narrator.prepareNext?.({id:result.value.id,text:result.value.text});change()})}
  async function play(topicId,{retry=false,fromCursor=false,advance=false}={}){
-  if(!tour||disposed)return;save();epoch++;controller?.abort();controller=new AbortController();preview=null;authPending=false;authNotified=false;const token=epoch,signal=controller.signal;playing=false;if(!advance)narrator.stop();selected=chapter(topicId)||null;change();
-  try{const value=await prepare(topicId,signal,token,{retry});if(token!==epoch||signal.aborted||!value)return;selected=value;change();if(value.status!=='ready')return;
+  if(!tour||disposed)return;save();epoch++;controller?.abort();controller=new AbortController();preview=null;authPending=false;authNotified=false;const token=epoch,signal=controller.signal;playing=false;if(!advance)narrator.stop();selected=chapter(topicId)||null;preparing=selected?.status!=='ready';change();
+  try{const value=await prepare(topicId,signal,token,{retry});if(token!==epoch||signal.aborted||!value)return;selected=value;preparing=false;change();if(value.status!=='ready')return;
    const textHash=speechTextHash(value.text),valid=fromCursor&&cursor?.chapterId===value.id&&cursor.textHash===textHash&&cursor.chunkingVersion===SPEECH_CHUNKING_VERSION;
    cursor={chapterId:value.id,chunkIndex:valid?cursor.chunkIndex:0,offsetSeconds:valid?cursor.offsetSeconds:0,textHash,chunkingVersion:SPEECH_CHUNKING_VERSION};
+   if(completed.delete(value.id))save();
    attempt={id:globalThis.crypto.randomUUID(),first:false,gap:false,paused:false,pausedAt:null,started:now(),loading:null,boundary:advance?transitionAt:null};narrator.language=tour.language;playing=true;narrator.play([{id:value.id,title:tour.topics.find(t=>t.id===topicId)?.title||'overview',text:value.text}],{...cursor,blockId:value.id});change();prefetch(token);
-  }catch(error){if(token!==epoch||signal.aborted)return;if(error.status===401)requireAuth();else{onError(error);change()}}
+  }catch(error){if(token!==epoch||signal.aborted)return;preparing=false;if(error.status===401)requireAuth();else{onError(error);change()}}
  }
  narrator.onProgress=value=>{if(!playing||value.blockId!==selected?.id){prior.onProgress?.(value);return}cursor={chapterId:selected.id,chunkIndex:value.chunkIndex,offsetSeconds:value.offsetSeconds,textHash:speechTextHash(selected.text),chunkingVersion:SPEECH_CHUNKING_VERSION};onBackup({tourId:tour.id,...cursor});if(now()-lastSaved>=5000)save()};
  narrator.onComplete=block=>{if(!playing||block.id!==selected?.id){prior.onComplete?.(block);return}completed.add(block.id);onChapterComplete({tourId:tour.id,chapterId:block.id});cursor={...cursor,chunkIndex:0,offsetSeconds:0};save();transitionAt=now();const token=epoch;playing=false;change();if(authPending){requireAuth();return}if(continuous){const id=nextTopic();if(id)queueMicrotask(()=>{if(token===epoch&&continuous)play(id,{advance:true})})}};
@@ -52,9 +69,18 @@ export function createTourPlayer({client,narrator,saveProgress=(id,value)=>clien
    selected=cursor?tour.chapters.find(c=>c.id===cursor.chapterId)||null:null;change()
   },
   play,
+  primary(){
+   const action=primaryAction();
+   if(action==='pause')return api.pause();
+   if(action==='resume')return api.resume();
+   if(['unavailable','preparing'].includes(action))return;
+   const target=action==='restart'?['overview',...tour.topics.map(t=>t.id)].find(id=>chapter(id)?.status==='ready'):action==='retry'&&selected?.status==='failed'&&selected.error?.retryable?selected.topicId:primaryTarget();
+   if(action==='restart'){completed.clear();cursor=null;}
+   api.setContinuous(true);return play(target,{retry:action==='retry'});
+  },
   pause(){if(playing)narrator.pause();save();change()},
   resume(){if(playing&&narrator.state==='paused'){narrator.resume();change();return}const id=selected?.topicId||'overview';return play(id,{fromCursor:true})},
-  stop(){save();epoch++;controller?.abort();controller=null;preview=null;continuous=false;playing=false;narrator.stop();change()},
+  stop(){save();epoch++;controller?.abort();controller=null;preview=null;continuous=false;playing=false;preparing=false;narrator.stop();change()},
   clear(){api.stop();tour=null;selected=null;cursor=null;completed.clear();change()},
   setContinuous(value){continuous=!!value;if(!continuous)narrator.clearPreparedNext?.();if(!continuous&&preview){epoch++;controller?.abort();controller=new AbortController();preview=null}if(continuous&&playing)prefetch(epoch);change()},
   save,
