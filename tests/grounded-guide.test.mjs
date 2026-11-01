@@ -82,3 +82,4 @@ test('retry receives the rejected draft and bounded review feedback',async()=>{
  }});
  await g.run({action:'story',placeId:'wd:Q1'});assert.equal(generations,2);assert.equal(reviews,2);
 });
+test('Russian stories and answers request ё while keeping original text intact',async()=>{for(const language of ['ru','en'])for(const action of ['story','question']){const guide=createGuide({env,collectSources:async()=>bundle,fetchFn:async(_,o)=>{assert.equal(JSON.parse(o.body).messages[0].content.includes('write ё'),language==='ru');return response(action==='story'?output:{text:'Музей еще открыт.',sourceIds:['s']})}});const result=await guide.run({action,language,placeId:'wd:Q1',...(action==='question'?{question:'Открыт?'}:{})});if(action==='question')assert.equal(result.text,'Музей еще открыт.')}});

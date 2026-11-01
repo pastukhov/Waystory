@@ -41,7 +41,7 @@ export async function handleTourRoute(req,res,{auth,tours,settings={},readJson,j
    return send(result.status,result.chapter);
   }
   if(progressPath==='playback-events'){const tour=await tours.get(user.id,id);if(!tour)throw tourError('invalid_request',404);return send(200,playbackEvents(user.id,tour,body));}
-  if(!only(body,['chapterId','chunkIndex','offsetSeconds','completedChapterIds'])||typeof body.chapterId!=='string'||!topicId.test(body.chapterId)||!Number.isSafeInteger(body.chunkIndex)||body.chunkIndex<0||!Number.isFinite(body.offsetSeconds)||body.offsetSeconds<0||!Array.isArray(body.completedChapterIds)||body.completedChapterIds.length>7||new Set(body.completedChapterIds).size!==body.completedChapterIds.length||body.completedChapterIds.some(id=>typeof id!=='string'||!topicId.test(id)))invalid();
+  if(!only(body,['chapterId','chunkIndex','offsetSeconds','completedChapterIds','chunkingVersion'])||body.chunkingVersion!==undefined&&(!Number.isSafeInteger(body.chunkingVersion)||body.chunkingVersion<1)||typeof body.chapterId!=='string'||!topicId.test(body.chapterId)||!Number.isSafeInteger(body.chunkIndex)||body.chunkIndex<0||!Number.isFinite(body.offsetSeconds)||body.offsetSeconds<0||!Array.isArray(body.completedChapterIds)||body.completedChapterIds.length>7||new Set(body.completedChapterIds).size!==body.completedChapterIds.length||body.completedChapterIds.some(id=>typeof id!=='string'||!topicId.test(id)))invalid();
   return send(200,await tours.progress(user.id,id,body));
  }catch(error){
   const status=[400,401,403,404,405,409,413,415,429,503].includes(error?.status)?error.status:503;

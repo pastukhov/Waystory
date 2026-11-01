@@ -165,3 +165,4 @@ test('playback telemetry validates owner, Origin, enums, attempt deduplication a
  for(let i=0;i<28;i++)assert.equal((await f.request(path,'POST',{...body,type:'playback_error',code:'provider_error'})).status,200);
  assert.equal((await f.request(path,'POST',body)).status,429);
 });
+test('progress route accepts optional version, rejects invalid versions and keeps legacy payloads',async t=>{const f=await fixture(t),progress={chapterId:'overview',chunkIndex:0,offsetSeconds:9,completedChapterIds:[],chunkingVersion:2},path='/api/tours/'+id+'/progress';assert.deepEqual((await f.request(path,'PUT',progress)).body,progress);for(const version of [null,0,-1,1.5,'2'])assert.equal((await f.request(path,'PUT',{...progress,chunkingVersion:version})).status,400)});

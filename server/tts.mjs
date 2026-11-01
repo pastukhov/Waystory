@@ -16,10 +16,10 @@ export function createSpeech({env=process.env,fetchFn=fetch,now=Date.now}={}){
  return {enabled,provider,async run(payload,signal){
   if(!enabled)throw new GuideError(503,'Облачная озвучка не подключена.');
   if(typeof payload?.text!=='string'||!payload.text.trim()||payload.text.length>1600)throw new GuideError(400,'Недопустимая длина фрагмента для озвучки.');
-  const text=normalizeSpeechText(payload.text);
-  if(!text)throw new GuideError(400,'Недопустимая длина фрагмента для озвучки.');
   const language=payload.language??'ru';
   if(!['ru','en'].includes(language))throw new GuideError(400,'Unsupported speech language.');
+  const text=normalizeSpeechText(payload.text,language);
+  if(!text)throw new GuideError(400,'Недопустимая длина фрагмента для озвучки.');
   const voice=voices[language],lang=language==='en'?'en-US':'ru-RU';
   const body=router?JSON.stringify({model,input:text,voice,response_format:'mp3'}):new URLSearchParams({text,voice,lang,format:'mp3',speed:'1.0'}).toString();
   if(Buffer.byteLength(body)>15000)throw new GuideError(400,'Фрагмент слишком длинный для озвучки.');

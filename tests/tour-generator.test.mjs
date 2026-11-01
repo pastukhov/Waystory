@@ -167,3 +167,4 @@ test('local refs are scoped to selected spans and ordinary Type1 and E1 prose re
  assert.equal(c.status,'ready');assert.deepEqual(c.evidenceIds,[spans[1].id]);
  }
 });
+test('Russian chapter prompts request ё without rewriting generated evidence claims',async()=>{for(const language of ['ru','en']){const text=language==='ru'?'Музей еще открыт.':'The museum is open.',chapter=await generateChapter({place,language,topic,spans},{complete:async request=>{assert.equal(request.messages[0].content.includes('write ё'),language==='ru');return wireAnswer(text,['e1'],language)},review:supported});assert.equal(chapter.text,text);assert.equal(chapter.claims[0].text,text)}});

@@ -199,3 +199,4 @@ test('plan failure fits reserved capacity for both error copies without evicting
  assert.equal(limited.get('B',ready.id).chapters[0].text,'Saved overview');assert.ok(limited.stats().bytes<=exactCap);
  assert.equal(limited.get('B',ready.id).chapters[0]._failureReserve,undefined);
 });
+test('progress persists optional chunking version and accepts legacy clients',t=>{const {store,db}=setup(t),a=store.create('A',input()),progress={chapterId:'overview',chunkIndex:1,offsetSeconds:8,completedChapterIds:[],chunkingVersion:2};assert.deepEqual(store.saveProgress('A',a.id,progress),progress);assert.deepEqual(createTourStore({db,now:()=>1000}).get('A',a.id).progress,progress);for(const version of [null,0,-1,1.5,'2'])assert.throws(()=>store.saveProgress('A',a.id,{...progress,chunkingVersion:version}),{status:400})});

@@ -46,3 +46,4 @@ test('planner JSON adapter returns compact refs while persisting only equivalent
  }});
  const result=await planTour({language:'ru',spans:long},{complete:model.complete});assert.equal(calls,1);assert.equal(result.length,1);assert.deepEqual(result[0].evidenceIds,[long[0].id,long[1].id]);assert.equal(result[0].id,factHash([normalizeFact('История'),[long[0].id,long[1].id]]));
 });
+test('Russian topic prose requests ё while English instructions remain unchanged',async()=>{for(const language of ['ru','en'])await planTour({language,spans},{complete:async request=>{assert.equal(request.messages[0].content.includes('write ё'),language==='ru');return {topics:[]}}})});
