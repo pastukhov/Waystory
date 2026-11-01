@@ -43,6 +43,7 @@ export function createTourPlayer({client,narrator,saveProgress=(id,value)=>clien
   try{const value=await prepare(topicId,signal,token,{retry});if(token!==epoch||signal.aborted||!value)return;selected=value;preparing=false;change();if(value.status!=='ready')return;
    const textHash=speechTextHash(value.text),valid=fromCursor&&cursor?.chapterId===value.id&&cursor.textHash===textHash&&cursor.chunkingVersion===SPEECH_CHUNKING_VERSION;
    cursor={chapterId:value.id,chunkIndex:valid?cursor.chunkIndex:0,offsetSeconds:valid?cursor.offsetSeconds:0,textHash,chunkingVersion:SPEECH_CHUNKING_VERSION};
+   if(completed.delete(value.id))save();
    attempt={id:globalThis.crypto.randomUUID(),first:false,gap:false,paused:false,pausedAt:null,started:now(),loading:null,boundary:advance?transitionAt:null};narrator.language=tour.language;playing=true;narrator.play([{id:value.id,title:tour.topics.find(t=>t.id===topicId)?.title||'overview',text:value.text}],{...cursor,blockId:value.id});change();prefetch(token);
   }catch(error){if(token!==epoch||signal.aborted)return;preparing=false;if(error.status===401)requireAuth();else{onError(error);change()}}
  }

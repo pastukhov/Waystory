@@ -67,3 +67,6 @@ test('stopping pending preparation allows continuing that chapter instead of lea
 test('pause and resume preserve a manually replayed completed chapter',async()=>{
  const {p,narrator,calls}=setup();p.open(fixture());await p.play('overview');narrator.onComplete({id:'c-overview'});await p.play('overview');await p.primary();assert.equal(narrator.state,'paused');const count=calls.length;await p.primary();assert.equal(narrator.state,'playing');assert.equal(p.getState().selected.id,'c-overview');assert.equal(calls.length,count);p.dispose();
 });
+test('stopping and reloading a completed chapter replay restores its live cursor',async()=>{
+ const {p,narrator,saved,calls}=setup();p.open(fixture());await p.play('overview');narrator.onComplete({id:'c-overview'});await p.play('overview');narrator.onProgress({blockId:'c-overview',chunkIndex:0,offsetSeconds:12});p.stop();assert.equal(p.getState().action,'resume');await p.primary();assert.equal(calls.at(-1)[2].offsetSeconds,12);p.stop();await tick();const restored=setup();restored.p.open({...fixture(),progress:saved.at(-1)});await restored.p.primary();assert.equal(restored.calls.at(-1)[1][0].id,'c-overview');assert.equal(restored.calls.at(-1)[2].offsetSeconds,12);restored.p.dispose();p.dispose();
+});

@@ -30,7 +30,7 @@ export function renderTour(container,tour,{onPrimary,onTopic,onRetry,selected,ac
   if(!view.reader){view.reader=make('details',null,'tour-reader');const summary=make('summary');summary.dataset.tourFocus='reader';view.reader.append(summary,make('div',null,'tour-reader-text'))}
   if((!view.reader.open||!view.chapterId||view.chapterId===c.id)&&(view.chapterId!==c.id||view.text!==c.text)){view.chapterId=c.id;view.text=c.text;view.reader.firstChild.textContent=t('Читать главу')+': '+(tour.topics.find(v=>v.id===c.topicId)?.title||t('Обзор'));view.reader.lastChild.replaceChildren(...c.text.split(/\n\s*\n/u).map(p=>make('p',p)))}
   nodes.push(view.reader);
- }
+ }else if(view.reader?.open&&view.chapterId){nodes.push(view.reader)}
  // Reuse the reader so a voice state update cannot reset its disclosure/scroll.
  container.replaceChildren(...nodes);
  if(focused){const target=[...container.querySelectorAll('[data-tour-focus]')].find(el=>el.dataset.tourFocus===focused);target?.focus({preventScroll:true})}
