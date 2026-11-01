@@ -207,8 +207,8 @@ export function createTourStore({db,now=Date.now,maxTours=LIMITS.maxTours,maxSto
   saveProgress(ownerId,tourId,progress) {
    if(!liveRow(ownerId,tourId))return null;
    const ids=new Set(db.prepare("SELECT data FROM tour_chapters WHERE tour_id=? AND topic_id<>'plan'").all(tourId).map(r=>JSON.parse(r.data).id));
-   if(!progress||!ids.has(progress.chapterId)||!Number.isSafeInteger(progress.chunkIndex)||progress.chunkIndex<0||!Number.isFinite(progress.offsetSeconds)||progress.offsetSeconds<0||!Array.isArray(progress.completedChapterIds)||progress.completedChapterIds.length>7||new Set(progress.completedChapterIds).size!==progress.completedChapterIds.length||progress.completedChapterIds.some(id=>!ids.has(id)))throw tourError('invalid_request',400);
-   const value={chapterId:progress.chapterId,chunkIndex:progress.chunkIndex,offsetSeconds:progress.offsetSeconds,completedChapterIds:progress.completedChapterIds};
+   if(!progress||progress.chunkingVersion!==undefined&&(!Number.isSafeInteger(progress.chunkingVersion)||progress.chunkingVersion<1)||!ids.has(progress.chapterId)||!Number.isSafeInteger(progress.chunkIndex)||progress.chunkIndex<0||!Number.isFinite(progress.offsetSeconds)||progress.offsetSeconds<0||!Array.isArray(progress.completedChapterIds)||progress.completedChapterIds.length>7||new Set(progress.completedChapterIds).size!==progress.completedChapterIds.length||progress.completedChapterIds.some(id=>!ids.has(id)))throw tourError('invalid_request',400);
+   const value={chapterId:progress.chapterId,chunkIndex:progress.chunkIndex,offsetSeconds:progress.offsetSeconds,completedChapterIds:progress.completedChapterIds,...(progress.chunkingVersion!==undefined?{chunkingVersion:progress.chunkingVersion}:{})};
    return transaction(()=>{db.prepare('INSERT INTO tour_progress VALUES(?,?,?,?) ON CONFLICT(tour_id,owner_id) DO UPDATE SET data=excluded.data,updated=excluded.updated').run(tourId,ownerId,JSON.stringify(value),now());db.prepare('UPDATE tours SET updated=? WHERE id=?').run(now(),tourId);capacity(tourId);return copy(value);});
   },
   cleanup:()=>transaction(()=>{cleanupRows();capacity();}),

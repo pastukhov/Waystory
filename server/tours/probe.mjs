@@ -22,7 +22,7 @@ export async function runTourProbe({service,jobs,ownerId,placeId,language='ru',s
  if(!tour.sources?.length||tour.sources.some(s=>!s.url||!s.license))return fail('missing_attribution');
  if(speech){
   // Same first-fragment boundary as CloudNarrator, with no second TTS request.
-  let text=normalizeSpeechText(chapters[0].text);if(text.length>1000){let end=text.lastIndexOf(' ',1000);if(end<500)end=1000;text=text.slice(0,end)}
+  let text=normalizeSpeechText(chapters[0].text,language);if(text.length>1000){let end=text.lastIndexOf(' ',1000);if(end<500)end=1000;text=text.slice(0,end)}
   const started=now(),audio=await speech({language,text});report({probe:'tour-speech',bytes:audio.length,durationMs:now()-started});
  }
  report({probe:'tour-result',passed:true,revision:process.env.WAYSTORY_REVISION||'unknown',chapters:chapters.length,themes:selected.length,sources:tour.sources.length,language:tour.language,words:chapters.reduce((n,c)=>n+c.text.trim().split(/\s+/u).length,0),durationMs:now()-start});return true;

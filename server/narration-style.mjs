@@ -1,0 +1,2 @@
+// Apply to authored Russian prose only, never to source evidence or quotations.
+export const narrationStyle=language=>language==='ru'?' For Russian prose, consistently write ё wherever Russian spelling requires it (ещё, её, посвящённый, освящённый, снесён). Apply this to titles, summaries, chapters and answers. Choose context-dependent е/ё words by meaning; preserve verified proper-name spelling and verbatim source quotations.':'';

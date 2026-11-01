@@ -27,7 +27,7 @@ export function createTourPlayer({client,narrator,saveProgress=(id,value)=>clien
  const change=()=>{if(!disposed)onChange(snapshot())};
  const chapter=topicId=>tour?.chapters.find(c=>c.topicId===topicId);
  const nextTopic=()=>{const ids=['overview',...tour.topics.map(t=>t.id)],index=ids.indexOf(selected?.topicId);return ids.slice(index+1).find(id=>!completed.has(chapter(id)?.id)&&chapter(id)?.status!=='insufficient')};
- function save(){if(!tour||!cursor||disposed)return;const backup={tourId:tour.id,...cursor};onBackup(backup);const value={chapterId:cursor.chapterId,chunkIndex:cursor.chunkIndex,offsetSeconds:cursor.offsetSeconds,completedChapterIds:[...completed]};lastSaved=now();const id=tour.id,token=epoch;saveQueue=saveQueue.then(()=>saveProgress(id,value)).catch(error=>{if(error.status===401&&token===epoch&&!authNotified){authPending=true;if(!playing||narrator.state==='paused')requireAuth()}})}
+ function save(){if(!tour||!cursor||disposed)return;const backup={tourId:tour.id,...cursor};onBackup(backup);const value={chapterId:cursor.chapterId,chunkIndex:cursor.chunkIndex,offsetSeconds:cursor.offsetSeconds,completedChapterIds:[...completed],chunkingVersion:cursor.chunkingVersion};lastSaved=now();const id=tour.id,token=epoch;saveQueue=saveQueue.then(()=>saveProgress(id,value)).catch(error=>{if(error.status===401&&token===epoch&&!authNotified){authPending=true;if(!playing||narrator.state==='paused')requireAuth()}})}
  function requireAuth(){if(authNotified)return;authNotified=true;authPending=false;continuous=false;playing=false;controller?.abort();preview=null;onAuthRequired();change()}
  function mergeChapter(value){const index=tour.chapters.findIndex(c=>c.topicId===value.topicId);if(index>=0)tour.chapters[index]=value;else tour.chapters.push(value);return value}
  async function prepare(topicId,signal,token,{retry=false}={}){
@@ -61,9 +61,10 @@ export function createTourPlayer({client,narrator,saveProgress=(id,value)=>clien
    cursor=null;
    if(position){
     const c=tour.chapters.find(c=>c.id===position.chapterId),textHash=speechTextHash(c.text);
-    // Server progress belongs to an immutable ready chapter in this authorized GET.
-    const sameText=!local||local.textHash===textHash&&local.chunkingVersion===SPEECH_CHUNKING_VERSION;
-    const usable=sameText&&position.chunkIndex<speechChunkCount(c.text);
+    // Normalization can change chunk boundaries and audio timing even when the
+    // immutable chapter text is unchanged. Legacy progress has no safe offset.
+    const sameText=position.chunkingVersion===SPEECH_CHUNKING_VERSION&&(!local||local.textHash===textHash);
+    const usable=sameText&&position.chunkIndex<speechChunkCount(c.text,tour.language);
     cursor={chapterId:c.id,chunkIndex:usable?position.chunkIndex:0,offsetSeconds:usable?position.offsetSeconds:0,textHash,chunkingVersion:SPEECH_CHUNKING_VERSION};
    }
    selected=cursor?tour.chapters.find(c=>c.id===cursor.chapterId)||null:null;change()
