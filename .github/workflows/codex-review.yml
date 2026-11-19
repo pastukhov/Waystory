@@ -18,7 +18,7 @@ concurrency:
 jobs:
   codex-review:
     name: Wait for Codex review
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Mark the PR head check pending
