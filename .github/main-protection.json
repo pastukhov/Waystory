@@ -5,6 +5,10 @@
       {
         "context": "Required checks",
         "app_id": 15368
+      },
+      {
+        "context": "Codex review complete",
+        "app_id": 15368
       }
     ]
   },
