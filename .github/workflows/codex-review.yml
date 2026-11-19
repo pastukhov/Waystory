@@ -1,7 +1,7 @@
 name: Codex Review
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -9,6 +9,7 @@ permissions:
   contents: read
   pull-requests: read
   issues: read
+  statuses: write
 
 concurrency:
   group: codex-review-${{ github.event.pull_request.number }}
@@ -16,17 +17,45 @@ concurrency:
 
 jobs:
   codex-review:
-    name: Codex review complete
+    name: Wait for Codex review
     runs-on: ubuntu-latest
-    timeout-minutes: 14
+    timeout-minutes: 15
     steps:
+      - name: Mark the PR head check pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$PR_HEAD" \
+            -f context='Codex review complete' -f state=pending \
+            -f description='Waiting for Codex review and resolution' \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+      # This workflow holds a write token. Only run code from the trusted base.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288ca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
-      - name: Wait for Codex review and resolution
+      - name: Wait for review and resolution
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/ci-codex-review.mjs
+      - name: Publish the PR head result
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          state=failure
+          description='Review gate failed. See the workflow log.'
+          if [[ "$JOB_STATUS" == success ]]; then
+            state=success
+            description='Codex review completed and findings resolved'
+          fi
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$PR_HEAD" \
+            -f context='Codex review complete' -f state="$state" \
+            -f description="$description" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
